@@ -1,0 +1,161 @@
+# Plano do Projeto — InventoryManager
+
+> Documento de planejamento da equipe. Guarda as decisões tomadas antes da implementação para servir de referência durante o desenvolvimento e na preparação da apresentação.
+
+## Contexto
+Projeto AV2 de Técnicas de Integração: **API REST** com autenticação diferente de Basic/Bearer/OAuth2/API Key + integração com API externa + deploy + README completo.
+
+A equipe escolheu **2FA TOTP via app autenticador** (Google Authenticator, Authy, Microsoft Authenticator). O sistema gerencia empréstimos de equipamentos caros de TI e só é acessado por técnicos e administradores. A prioridade é que a autenticação seja fácil de **ler, explicar e defender em perguntas**. Por isso a stack é mínima, a organização é **por camadas** e **todo o código fica em inglês** (pastas, arquivos, tabelas, campos, rotas). O README e as mensagens exibidas ao usuário ficam em português.
+
+## Ordem de trabalho
+1. Plano (este arquivo) + README completo.
+2. Implementação em etapas: primeiro o **núcleo** funcionando (login → QR → código → rota protegida → expiração do MFA), depois cada **extra de segurança** isolado e comentado (criptografia AES do segredo, anti-replay, bloqueio + rate limit). O sistema funciona ao fim de qualquer etapa.
+3. Recursos de negócio, integração externa, front, deploy.
+
+## Stack
+| Camada | Escolha | Por quê |
+|---|---|---|
+| Runtime/API | **Node.js + Express** (REST) | Pouco código, rotas fáceis de ler, middleware deixa a checagem de auth explícita |
+| Banco | **SQLite** via `node:sqlite` (já vem no Node ≥22.13, sem dependência nativa) | Um arquivo só, sem servidor; o seed roda ao iniciar |
+| Senhas | `bcryptjs` | Hash com salt, JS puro |
+| TOTP | `otplib` | Gera o segredo e valida o código (RFC 6238, janela de 30s) |
+| QR Code | `qrcode` | Gera o QR `otpauth://` que o app lê |
+| Sessão | `express-session` (cookie httpOnly, sameSite) | Sessão no servidor com **estágios** (senha OK → 2FA OK). Não usa Bearer/JWT, para não misturar com técnicas proibidas |
+| Proteção | `express-rate-limit`, `helmet` | Rate limiting no login/2FA, headers seguros |
+| Front | HTML + CSS + JS puro em `public/` (fetch), mínimo e só funcional | O front não é o foco. O mesmo Express serve o front, então o cookie de sessão funciona sem CORS |
+| Deploy | **Render** (web service gratuito) | Deploy a partir do GitHub, variáveis de ambiente pelo painel |
+
+## Estrutura de pastas
+Fluxo de uma requisição: **routes** → **middlewares** (auth, role, validação) → **controllers** → **services** → **repositories** → banco (tabelas definidas em **models**).
+
+```
+src/
+├── config/                  # Variáveis de ambiente e configs (banco, sessão)
+│   ├── env.js
+│   ├── database.js          # conexão SQLite (node:sqlite) + criação das tabelas
+│   └── session.js           # express-session (cookie httpOnly/secure/sameSite)
+├── controllers/             # Recebem a requisição HTTP e enviam a resposta
+│   ├── authController.js    # login, logout, me, 2fa setup/enable/verify
+│   ├── userController.js
+│   ├── equipmentController.js
+│   └── loanController.js
+├── middlewares/             # Interceptadores
+│   ├── authMiddleware.js    # requireAuth (estágio + expiração do MFA), requirePendingMfa
+│   ├── roleMiddleware.js    # requireRole('admin' | 'technician')
+│   ├── rateLimitMiddleware.js
+│   ├── validateMiddleware.js # valida req.body (ex.: email válido, código TOTP com 6 dígitos) → 400
+│   └── errorMiddleware.js   # erro → JSON com status (400/401/403/404/423/429/500)
+├── models/                  # Definição das tabelas
+│   ├── User.js
+│   ├── Equipment.js
+│   └── Loan.js
+├── repositories/            # Queries SQL
+│   ├── userRepository.js
+│   ├── equipmentRepository.js
+│   └── loanRepository.js
+├── routes/                  # Endpoints → controllers
+│   ├── index.js             # agrega todas as rotas
+│   ├── authRoutes.js
+│   ├── userRoutes.js
+│   ├── equipmentRoutes.js
+│   └── loanRoutes.js
+├── services/                # Regras de negócio
+│   ├── authService.js       # senha (bcrypt), bloqueio por tentativas, estágios da sessão
+│   ├── totpService.js       # núcleo: gera segredo, QR, valida código, anti-replay
+│   ├── userService.js       # inclui toPublicUser(): remove password_hash e segredo TOTP das respostas
+│   ├── equipmentService.js  # combina dados locais + cotação externa
+│   ├── loanService.js       # calcula devolução usando feriados externos
+│   ├── exchangeRateService.js  # API externa 1: AwesomeAPI (USD→BRL)
+│   └── holidayService.js    # API externa 2: BrasilAPI (feriados nacionais)
+├── utils/                   # Helpers reutilizáveis
+│   ├── AppError.js          # erro com statusCode + code (ex.: MFA_EXPIRED)
+│   ├── crypto.js            # AES-256-GCM para cifrar o segredo TOTP no banco
+│   ├── password.js          # bcrypt hash/compare
+│   └── formatDate.js
+├── seed.js                  # dados iniciais
+├── app.js                   # configuração central do Express
+└── server.js                # inicialização do servidor HTTP
+```
+Fora de `src/`: `public/` (front simples), `docs/` (este plano, `auth-flow.md`, `requests.http`), `.env.example`, `package.json` e `README.md`.
+
+## Fluxo de autenticação
+```
+[1] POST /auth/login {email, password}
+     └─ bcrypt.compare OK? → session.pendingUserId = id ; session.stage = "PASSWORD_OK"
+          ├─ usuário SEM 2FA ativo → { next: "SETUP_2FA" }
+          └─ usuário COM 2FA ativo → { next: "VERIFY_2FA" }
+
+[2a] Primeiro acesso (obrigatório)
+     GET  /auth/2fa/setup          → gera segredo, guarda em session.tempTotpSecret,
+                                     devolve QR Code (data URL) + chave manual
+     POST /auth/2fa/enable {code}  → valida o código com tempTotpSecret
+                                   → salva o segredo CIFRADO (AES-256-GCM), totp_enabled = 1
+                                   → stage = "AUTHENTICATED", mfaVerifiedAt = agora
+
+[2b] Acessos seguintes
+     POST /auth/2fa/verify {code}  → valida com o segredo do usuário (janela ±1 passo)
+                                   → rejeita reuso do mesmo código (last_totp_step)
+                                   → stage = "AUTHENTICATED", mfaVerifiedAt = agora
+
+[3] Rotas protegidas → authMiddleware.requireAuth:
+     stage !== AUTHENTICATED          → 401
+     agora - mfaVerifiedAt > MFA_TTL  → destrói a sessão → 401 { code: "MFA_EXPIRED" }
+     roleMiddleware.requireRole(...)  → 403 se o papel não bate
+
+[4] POST /auth/logout → session.destroy()
+```
+- **Reautenticação periódica**: `MFA_TTL_MINUTES` (padrão 30). Na demo, 1–2 min para mostrar a expiração ao vivo.
+- **Bloqueio**: 5 códigos errados seguidos → conta bloqueada por 15 minutos (`failed_attempts`, `locked_until`) → 423.
+- **Admin reseta o 2FA**: se o técnico perder o celular, o admin zera o segredo e no próximo login o técnico configura de novo.
+
+## Papéis e permissões
+- **admin**: só gerencia contas (criar, listar, editar, desativar/excluir, resetar 2FA). Não vê o estoque.
+- **technician**: vê o estoque, registra empréstimo e devolução, vê o histórico.
+
+## Recursos
+- **users**: id, name, email, password_hash, role, totp_secret_enc, totp_enabled, last_totp_step, failed_attempts, locked_until, active, created_at
+- **equipment**: id, asset_tag, type, brand, model, serial_number, value_usd, status (available/loaned/maintenance), location, created_at
+- **loans**: id, equipment_id, technician_id, borrower_name, destination_department, checkout_date, expected_return_date, returned_at, notes, status
+
+Seed: 1 admin + 3 technicians (todos sem 2FA, para forçar o setup no primeiro login), 5 equipamentos, 3 empréstimos.
+
+## Endpoints
+| Método | Rota | Acesso |
+|---|---|---|
+| POST | /auth/login | público (rate limit) |
+| GET | /auth/2fa/setup | estágio PASSWORD_OK |
+| POST | /auth/2fa/enable | estágio PASSWORD_OK |
+| POST | /auth/2fa/verify | estágio PASSWORD_OK (rate limit) |
+| POST | /auth/logout | autenticado |
+| GET | /auth/me | autenticado |
+| GET/POST/PUT/DELETE | /api/users[/:id] | admin |
+| POST | /api/users/:id/reset-2fa | admin |
+| GET | /api/equipment[/:id] | technician |
+| GET/POST | /api/loans | technician |
+| PATCH | /api/loans/:id/return | technician |
+
+Erros padronizados `{ error: { code, message } }`: 400, 401, 403, 404, 409, 423, 429.
+
+## Integração com API externa
+1. **AwesomeAPI** `GET https://economia.awesomeapi.com.br/json/last/USD-BRL`: adiciona `value_brl` e `exchange_rate` em cada equipamento.
+2. **BrasilAPI** `GET https://brasilapi.com.br/api/feriados/v1/{year}`: calcula `expected_return_date` pulando fins de semana e feriados nacionais e devolve `skipped_holidays`.
+- `fetch` nativo com timeout + cache em memória como fallback, para a demo não quebrar se a API externa cair.
+
+## Fluxo de Git
+- **Uma branch por funcionalidade**, criada a partir da `main` atualizada.
+- **Commits pequenos**: um por estrutura, função ou funcionalidade, com mensagem descritiva em português e prefixo do tipo (ex.: `feat: geração do segredo TOTP e QR Code no primeiro acesso`).
+- Cada branch vira um **Pull Request**, que é revisado antes do merge.
+- Todos os integrantes devem ter commits próprios, distribuídos ao longo do período.
+
+Ordem prevista das branches:
+`docs/plan-and-readme` → `feat/project-setup` → `feat/database` → `feat/password-login` → `feat/totp-setup` → `feat/totp-verify` → `feat/auth-middlewares` → `feat/totp-encryption` → `feat/anti-replay` → `feat/rate-limit-lockout` → `feat/users-crud` → `feat/equipment` → `feat/loans` → `feat/external-apis` → `feat/frontend` → `chore/deploy-render`
+
+## Checklist de verificação
+1. `npm install && npm run dev`, abrir `http://localhost:3000`.
+2. Logar como technician do seed → obrigado a configurar o 2FA → escanear o QR → digitar o código → ver o estoque com `value_brl`.
+3. Logout → login → só pede o código. Código errado 5x → 423. Reusar o mesmo código → rejeitado.
+4. Com `MFA_TTL_MINUTES=1`: esperar → a próxima chamada dá 401 `MFA_EXPIRED`.
+5. Technician chamando `/api/users` → 403; sem sessão → 401; admin chamando `/api/equipment` → 403.
+6. Criar empréstimo → `expected_return_date` pula feriado.
+7. Admin cria usuário, reseta o 2FA dele, exclui.
+8. Repetir os passos 2–7 na URL do Render.
