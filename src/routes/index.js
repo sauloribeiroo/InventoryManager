@@ -1,6 +1,7 @@
 // Agrega todas as rotas da API. Cada recurso ganha seu próprio arquivo *Routes.js.
 
 const { Router } = require('express');
+const authRoutes = require('./authRoutes');
 
 const router = Router();
 
@@ -8,5 +9,7 @@ const router = Router();
 router.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+router.use('/auth', authRoutes);
 
 module.exports = router;
