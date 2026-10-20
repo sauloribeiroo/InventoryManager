@@ -2,6 +2,7 @@
 
 const { Router } = require('express');
 const authRoutes = require('./authRoutes');
+const userRoutes = require('./userRoutes');
 
 const router = Router();
 
@@ -11,5 +12,6 @@ router.get('/health', (req, res) => {
 });
 
 router.use('/auth', authRoutes);
+router.use('/api/users', userRoutes);
 
 module.exports = router;
