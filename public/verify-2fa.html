@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Verificar 2FA — InventoryManager</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <main>
+    <div class="card auth-card">
+      <h2>Código de verificação</h2>
+      <p class="muted">Etapa 2 de 2 — digite o código de 6 dígitos que aparece agora no seu app autenticador.</p>
+
+      <form id="verify-form">
+        <label for="code">Código do app</label>
+        <input id="code" class="code" inputmode="numeric" pattern="\d{6}" maxlength="6" autocomplete="one-time-code" autofocus required>
+        <button type="submit">Verificar</button>
+      </form>
+
+      <div id="message" class="message"></div>
+      <p class="muted">Perdeu o celular? Peça ao administrador para resetar o seu 2FA.</p>
+    </div>
+  </main>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/verify-2fa.js"></script>
+</body>
+</html>

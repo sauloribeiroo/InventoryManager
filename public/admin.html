@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Administração — InventoryManager</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header>
+    <h1>InventoryManager — Administração</h1>
+    <div>
+      <span id="user-name"></span> · <small id="mfa-expires"></small>
+      <button id="logout" class="secondary small">Sair</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>Novo usuário</h2>
+      <p class="muted">No primeiro login, a pessoa será obrigada a configurar o 2FA no próprio celular.</p>
+      <form id="create-form" class="form-grid">
+        <div><label for="name">Nome</label><input id="name" required></div>
+        <div><label for="email">E-mail</label><input id="email" type="email" required></div>
+        <div><label for="password">Senha inicial</label><input id="password" type="password" minlength="8" required></div>
+        <div>
+          <label for="role">Papel</label>
+          <select id="role">
+            <option value="technician">Técnico</option>
+            <option value="admin">Administrador</option>
+          </select>
+        </div>
+        <button type="submit">Criar usuário</button>
+      </form>
+      <div id="create-message" class="message"></div>
+    </section>
+
+    <section class="card">
+      <h2>Contas com acesso ao sistema</h2>
+      <div id="list-message" class="message"></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Nome</th><th>E-mail</th><th>Papel</th><th>Status</th><th>2FA</th><th>Ações</th></tr>
+          </thead>
+          <tbody id="users"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/admin.js"></script>
+</body>
+</html>

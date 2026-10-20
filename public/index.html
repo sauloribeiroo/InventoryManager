@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Login — InventoryManager</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <main>
+    <div class="card auth-card">
+      <h2>InventoryManager</h2>
+      <p class="muted">Etapa 1 de 2 — e-mail e senha</p>
+
+      <form id="login-form">
+        <label for="email">E-mail</label>
+        <input id="email" type="email" autocomplete="username" required>
+
+        <label for="password">Senha</label>
+        <input id="password" type="password" autocomplete="current-password" required>
+
+        <button type="submit">Entrar</button>
+      </form>
+
+      <div id="message" class="message"></div>
+    </div>
+  </main>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/login.js"></script>
+</body>
+</html>

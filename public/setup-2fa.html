@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Configurar 2FA — InventoryManager</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <main>
+    <div class="card auth-card">
+      <h2>Configurar autenticação em dois fatores</h2>
+      <p class="muted">Etapa 2 de 2 — primeiro acesso</p>
+
+      <ol class="muted">
+        <li>Abra o Google Authenticator (ou outro app autenticador).</li>
+        <li>Toque em <strong>+</strong> → <strong>Ler código QR</strong>.</li>
+        <li>Digite abaixo o código de 6 dígitos que aparecer.</li>
+      </ol>
+
+      <img id="qr" class="qr" alt="QR Code para o app autenticador">
+      <p class="muted">Não consegue ler o QR? Use a chave manual:</p>
+      <div id="manual-key" class="manual-key"></div>
+
+      <form id="enable-form">
+        <label for="code">Código do app</label>
+        <input id="code" class="code" inputmode="numeric" pattern="\d{6}" maxlength="6" autocomplete="one-time-code" required>
+        <button type="submit">Ativar 2FA</button>
+      </form>
+
+      <div id="message" class="message"></div>
+    </div>
+  </main>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/setup-2fa.js"></script>
+</body>
+</html>
