@@ -29,6 +29,12 @@ async function enableTotp(req, res) {
   res.json({ message: '2FA ativado com sucesso.', user: toPublicUser(user) });
 }
 
+// POST /auth/2fa/verify
+async function verifyTotp(req, res) {
+  const user = await authService.verifyTotpLogin(req, req.body.code);
+  res.json({ message: 'Autenticado com sucesso.', user: toPublicUser(user) });
+}
+
 // POST /auth/logout
 async function logout(req, res) {
   await authService.destroySession(req);
@@ -36,4 +42,4 @@ async function logout(req, res) {
   res.json({ message: 'Sessão encerrada.' });
 }
 
-module.exports = { login, setupTotp, enableTotp, logout };
+module.exports = { login, setupTotp, enableTotp, verifyTotp, logout };
