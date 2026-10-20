@@ -22,4 +22,21 @@ function updateLastTotpStep(id, timeStep) {
   db.prepare('UPDATE users SET last_totp_step = ? WHERE id = ?').run(timeStep, id);
 }
 
-module.exports = { findByEmail, findById, enableTotp, updateLastTotpStep };
+// Bloqueio por tentativas: grava o número de erros seguidos e, se for o caso, até quando a conta fica bloqueada.
+function registerFailedAttempt(id, failedAttempts, lockedUntil) {
+  db.prepare('UPDATE users SET failed_attempts = ?, locked_until = ? WHERE id = ?').run(failedAttempts, lockedUntil, id);
+}
+
+// Código certo: zera o contador de erros e remove qualquer bloqueio.
+function clearFailedAttempts(id) {
+  db.prepare('UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = ?').run(id);
+}
+
+module.exports = {
+  findByEmail,
+  findById,
+  enableTotp,
+  updateLastTotpStep,
+  registerFailedAttempt,
+  clearFailedAttempts,
+};
