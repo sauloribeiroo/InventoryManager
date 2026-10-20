@@ -13,7 +13,15 @@ const app = express();
 // No Render a API fica atrás de um proxy HTTPS; necessário para o cookie "secure" funcionar
 if (env.isProduction) app.set('trust proxy', 1);
 
-app.use(helmet()); // headers HTTP de segurança
+// Headers HTTP de segurança. O CSP padrão só permite scripts do próprio site (sem scripts inline).
+// "upgrade-insecure-requests" força HTTPS: só faz sentido em produção (local roda em HTTP).
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: { upgradeInsecureRequests: env.isProduction ? [] : null },
+    },
+  })
+);
 app.use(express.json({ limit: '10kb' })); // lê corpo JSON (com limite de tamanho)
 app.use(sessionMiddleware); // cria/recupera req.session a partir do cookie
 app.use(express.static(path.join(__dirname, '..', 'public'))); // front-end simples
