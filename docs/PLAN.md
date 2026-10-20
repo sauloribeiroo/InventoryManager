@@ -159,3 +159,52 @@ Ordem prevista das branches:
 6. Criar empréstimo → `expected_return_date` pula feriado.
 7. Admin cria usuário, reseta o 2FA dele, exclui.
 8. Repetir os passos 2–7 na URL do Render.
+
+## Implementação futura: API de garantia (substituir a AwesomeAPI)
+
+> Status: **planejado, ainda não iniciado.**
+
+### Motivação
+A AwesomeAPI (cotação USD→BRL) só **exibe** um valor a mais e não interfere em nenhuma regra do sistema. Uma API de **garantia do fornecedor** se encaixa melhor no domínio e **muda o resultado de uma operação**: equipamento com garantia vencida não pode ser emprestado.
+
+APIs reais de garantia (Dell TechDirect, Lenovo, HP, Apple GSX) exigem cadastro e aprovação como parceiro e só funcionam com números de série reais. Por isso a equipe vai **criar a própria API**, simulando o sistema do fornecedor. O PDF permite isso: "integração com outra API externa (que vocês também podem criar)".
+
+### A WarrantyAPI
+Serviço Express mínimo, separado do InventoryManager, com os dados em um arquivo JSON e deploy próprio no Render.
+
+| Rota | Retorna |
+|---|---|
+| `GET /warranties/:serialNumber` | a garantia de um equipamento (404 se não existir) |
+| `GET /warranties?serials=A,B,C` | várias garantias de uma vez (para a listagem do estoque) |
+
+```json
+{
+  "serial_number": "DL7440-8F2K1",
+  "supplier": "Dell Brasil",
+  "purchase_date": "2024-03-10",
+  "warranty_end": "2027-03-10",
+  "support_level": "ProSupport Next Business Day",
+  "status": "active"
+}
+```
+
+Dados: os 5 números de série do seed, com **pelo menos um com garantia vencida** para a demonstração.
+
+### Integração no InventoryManager (2 requisições)
+1. **`GET /api/equipment`**: consulta em lote e junta a garantia em cada equipamento (`warranty`).
+2. **`POST /api/loans`**: consulta a garantia antes de emprestar. **Garantia vencida → `409 CONFLICT`** ("equipamento sem garantia não pode sair do setor").
+- Se a WarrantyAPI estiver fora do ar: a listagem mostra a garantia como indisponível, e o empréstimo segue a mesma linha de resiliência das outras integrações (decidir: bloquear por segurança ou permitir com aviso).
+
+### Mudanças previstas
+- Novo `src/services/warrantyService.js` (no molde do `exchangeRateService.js`: `fetchJson` com timeout, cache e fallback).
+- Nova variável `WARRANTY_API_URL` no `.env.example` e no README.
+- Remover `exchangeRateService.js`. Trocar `value_usd` por `value_brl` guardado no banco (model, seed, front e README).
+- Ajustar `equipmentService`, `loanService`, a tela `inventory.html` (coluna "Garantia") e os exemplos do README e do `docs/requests.http`.
+- A BrasilAPI (feriados) continua.
+
+### Decisões em aberto
+- **Onde fica o código:** pasta `warranty-api/` neste repositório (recomendado: um só repositório para avaliar e um só histórico de commits; o Render aponta o segundo serviço para essa pasta) ou repositório separado.
+- **Autenticação entre os serviços:** sem autenticação (mais simples de explicar) ou uma chave simples só entre os serviços, deixando claro que não é a técnica de autenticação do projeto.
+
+### Branches sugeridas
+`feat/warranty-api` (o serviço) → `feat/warranty-integration` (consumir no InventoryManager e remover a AwesomeAPI) → `docs/warranty-readme` (README e requests.http). Boa tarefa para outro integrante da equipe.
