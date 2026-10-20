@@ -1,10 +1,14 @@
 // Regras de negócio dos empréstimos (acesso do técnico).
+//
+// Integração externa: a data prevista de devolução é calculada em dias úteis,
+// pulando fins de semana e os feriados nacionais consultados na BrasilAPI.
 
 const AppError = require('../utils/AppError');
 const { toISODate, addBusinessDays } = require('../utils/formatDate');
 const { runInTransaction } = require('../utils/transaction');
 const loanRepository = require('../repositories/loanRepository');
 const equipmentRepository = require('../repositories/equipmentRepository');
+const holidayService = require('./holidayService');
 const { STATUSES } = require('../models/Loan');
 
 // Acrescenta is_overdue: empréstimo ativo com a data prevista de devolução já passada
@@ -21,15 +25,21 @@ function list(filters = {}) {
 }
 
 // Registra a saída de um equipamento. O prazo é informado em dias úteis.
-function create(data, technicianId) {
+async function create(data, technicianId) {
   const equipment = equipmentRepository.findById(data.equipment_id);
   if (!equipment) throw new AppError(404, 'NOT_FOUND', 'Equipamento não encontrado.');
   if (equipment.status !== 'available') {
     throw new AppError(409, 'CONFLICT', `Equipamento ${equipment.asset_tag} não está disponível (status: ${equipment.status}).`);
   }
 
+  // Busca os feriados deste ano e do próximo (o prazo pode virar o ano)
   const today = new Date();
-  const { date: expectedReturn } = addBusinessDays(today, data.business_days);
+  const { holidays, checked } = await holidayService.getHolidayMap([today.getFullYear(), today.getFullYear() + 1]);
+  const { date: expectedReturn, skippedHolidays } = addBusinessDays(
+    today,
+    data.business_days,
+    (date) => holidays.has(toISODate(date))
+  );
 
   // Empréstimo + status do equipamento mudam juntos (ou nenhum muda)
   const loan = runInTransaction(() => {
@@ -46,7 +56,11 @@ function create(data, technicianId) {
     return created;
   });
 
-  return withOverdueFlag(loan);
+  return {
+    ...withOverdueFlag(loan),
+    skipped_holidays: skippedHolidays.map((date) => ({ date, name: holidays.get(date) })),
+    holidays_checked: checked, // false = BrasilAPI fora do ar, prazo calculado só com fins de semana
+  };
 }
 
 // Registra a devolução: o equipamento volta a ficar disponível.
