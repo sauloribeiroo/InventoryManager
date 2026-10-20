@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Estoque — InventoryManager</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header>
+    <h1>InventoryManager — Estoque de TI</h1>
+    <div>
+      <span id="user-name"></span> · <small id="mfa-expires"></small>
+      <button id="logout" class="secondary small">Sair</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>Equipamentos</h2>
+      <p id="exchange-rate" class="muted"></p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Patrimônio</th><th>Tipo</th><th>Equipamento</th><th>Nº de série</th><th>Valor (US$)</th><th>Valor (R$)</th><th>Status</th><th>Local</th></tr>
+          </thead>
+          <tbody id="equipment"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Novo empréstimo</h2>
+      <form id="loan-form" class="form-grid">
+        <div><label for="equipment-id">Equipamento disponível</label><select id="equipment-id" required></select></div>
+        <div><label for="borrower">Responsável</label><input id="borrower" required></div>
+        <div><label for="department">Setor de destino</label><input id="department" required></div>
+        <div><label for="days">Prazo (dias úteis)</label><input id="days" type="number" min="1" max="30" value="5" required></div>
+        <div><label for="notes">Observação</label><input id="notes"></div>
+        <button type="submit">Registrar empréstimo</button>
+      </form>
+      <div id="loan-message" class="message"></div>
+    </section>
+
+    <section class="card">
+      <h2>Empréstimos</h2>
+      <div id="list-message" class="message"></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>#</th><th>Equipamento</th><th>Responsável</th><th>Setor</th><th>Saída</th><th>Devolução prevista</th><th>Devolvido em</th><th>Registrado por</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody id="loans"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/inventory.js"></script>
+</body>
+</html>
