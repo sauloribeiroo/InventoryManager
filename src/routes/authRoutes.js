@@ -2,7 +2,7 @@
 
 const { Router } = require('express');
 const authController = require('../controllers/authController');
-const { requirePendingMfa } = require('../middlewares/authMiddleware');
+const { requirePendingMfa, requireAuth } = require('../middlewares/authMiddleware');
 const { validateBody, isEmail, isRequiredString, isTotpCode } = require('../middlewares/validateMiddleware');
 
 const router = Router();
@@ -17,6 +17,8 @@ router.post('/2fa/enable', requirePendingMfa, validateBody({ code: isTotpCode })
 // Etapa 2b: acessos seguintes (código atual do app)
 router.post('/2fa/verify', requirePendingMfa, validateBody({ code: isTotpCode }), authController.verifyTotp);
 
+// Sessão autenticada (senha + código)
+router.get('/me', requireAuth, authController.me);
 router.post('/logout', authController.logout);
 
 module.exports = router;
