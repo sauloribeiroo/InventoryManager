@@ -1,23 +1,40 @@
 // Regras de negócio do estoque de equipamentos (acesso do técnico).
+//
+// Integração externa: os dados locais (value_usd) são combinados com a cotação do dólar
+// da AwesomeAPI para devolver também o valor em reais (value_brl).
 
 const AppError = require('../utils/AppError');
 const equipmentRepository = require('../repositories/equipmentRepository');
+const exchangeRateService = require('./exchangeRateService');
 const { STATUSES, TYPES } = require('../models/Equipment');
 
-function list(filters = {}) {
+function withValueInBrl(equipment, rate) {
+  return {
+    ...equipment,
+    value_brl: rate ? Math.round(equipment.value_usd * rate.usd_brl * 100) / 100 : null,
+    exchange_rate: rate,
+  };
+}
+
+async function list(filters = {}) {
   if (filters.status && !STATUSES.includes(filters.status)) {
     throw new AppError(400, 'VALIDATION_ERROR', `status deve ser um destes: ${STATUSES.join(', ')}.`);
   }
   if (filters.type && !TYPES.includes(filters.type)) {
     throw new AppError(400, 'VALIDATION_ERROR', `type deve ser um destes: ${TYPES.join(', ')}.`);
   }
-  return equipmentRepository.findAll(filters);
+
+  const items = equipmentRepository.findAll(filters);
+  const rate = await exchangeRateService.getUsdBrlRate(); // uma consulta para a lista inteira
+  return items.map((item) => withValueInBrl(item, rate));
 }
 
-function getById(id) {
+async function getById(id) {
   const equipment = equipmentRepository.findById(id);
   if (!equipment) throw new AppError(404, 'NOT_FOUND', 'Equipamento não encontrado.');
-  return equipment;
+
+  const rate = await exchangeRateService.getUsdBrlRate();
+  return withValueInBrl(equipment, rate);
 }
 
 module.exports = { list, getById };

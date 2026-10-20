@@ -8,8 +8,8 @@ function list(req, res) {
 }
 
 // POST /api/loans — o técnico logado fica registrado como responsável pela saída
-function create(req, res) {
-  const loan = loanService.create(req.body, req.user.id);
+async function create(req, res) {
+  const loan = await loanService.create(req.body, req.user.id);
   res.status(201).json(loan);
 }
 
