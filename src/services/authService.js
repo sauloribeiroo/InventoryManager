@@ -77,7 +77,7 @@ async function confirmTotpSetup(req, code) {
   }
 
   const userId = req.session.pendingUserId;
-  userRepository.enableTotp(userId, encrypt(secret)); // o banco só guarda o segredo cifrado
+  userRepository.enableTotp(userId, encrypt(secret), timeStep); // o banco só guarda o segredo cifrado
   await completeAuthentication(req, userId);
 
   return userRepository.findById(userId);
@@ -92,11 +92,12 @@ async function verifyTotpLogin(req, code) {
   }
 
   const secret = decrypt(user.totp_secret_enc); // decifra só em memória, só para validar
-  const timeStep = await totpService.verifyCode(secret, code);
+  const timeStep = await totpService.verifyCode(secret, code, user.last_totp_step);
   if (timeStep === null) {
-    throw new AppError(401, 'INVALID_TOTP_CODE', 'Código inválido. Confira o app autenticador e tente novamente.');
+    throw new AppError(401, 'INVALID_TOTP_CODE', 'Código inválido ou já utilizado. Aguarde o próximo código do app.');
   }
 
+  userRepository.updateLastTotpStep(user.id, timeStep); // este código não poderá ser usado de novo
   await completeAuthentication(req, user.id);
   return user;
 }

@@ -27,9 +27,18 @@ async function createSetup(email) {
 }
 
 // Confere o código de 6 dígitos com o segredo.
-// Retorna o passo de tempo aceito (usado depois para impedir reuso) ou null se for inválido.
-async function verifyCode(secret, code) {
-  const result = await verify({ secret, token: code, epochTolerance: TOLERANCE_SECONDS });
+// Retorna o passo de tempo aceito (para ser salvo como lastTimeStep) ou null se for inválido.
+//
+// Anti-replay: um código vale ~30 s; sem proteção, quem visse o código na tela (ou interceptasse
+// a requisição) poderia reutilizá-lo nesse intervalo. Passando o último passo já aceito,
+// códigos daquele passo ou de passos anteriores são recusados → cada código vale UMA vez.
+async function verifyCode(secret, code, lastTimeStep = null) {
+  const result = await verify({
+    secret,
+    token: code,
+    epochTolerance: TOLERANCE_SECONDS,
+    afterTimeStep: lastTimeStep ?? undefined,
+  });
   return result.valid ? result.timeStep : null;
 }
 
