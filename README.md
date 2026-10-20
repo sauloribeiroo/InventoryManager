@@ -160,6 +160,11 @@ sequenceDiagram
 - **Segredo guardado no servidor:** se o banco **e** a chave de criptografia vazarem juntos, o atacante consegue gerar códigos. Por isso o segredo é cifrado e a chave fica fora do banco, em variável de ambiente.
 - **Atrito:** um passo a mais em cada login. Não vale a pena em sistemas de baixo risco ou em comunicação máquina a máquina (sem humano com celular). Nesses casos, API Key ou mTLS fazem mais sentido.
 
+**Limitações desta implementação:**
+- Sessões e contadores do rate limit ficam **na memória do servidor**: reiniciar o servidor desloga todo mundo, e não funciona com várias instâncias. Em produção real, usaríamos um store compartilhado (ex.: Redis).
+- O **reset do 2FA** não derruba uma sessão que o usuário já tenha aberta (ela vale até expirar pelo `MFA_TTL_MINUTES`). Para cortar o acesso na hora, o admin deve **desativar** a conta: isso é checado a cada requisição.
+- Não há **códigos de recuperação** nem troca de senha pelo próprio usuário.
+
 ### Implementação
 | Tecnologia | Uso |
 |---|---|
@@ -184,7 +189,46 @@ Arquivos principais da autenticação:
 | [src/middlewares/authMiddleware.js](src/middlewares/authMiddleware.js) | `requireAuth` (estágio + expiração do MFA) e `requirePendingMfa` |
 | [src/middlewares/roleMiddleware.js](src/middlewares/roleMiddleware.js) | `requireRole('admin' \| 'technician')` → 403 |
 
-<!-- TODO: após a implementação, colar aqui os trechos principais de totpService.js e authMiddleware.js -->
+Diagramas detalhados (estágios da sessão, middlewares, validação do código): [docs/auth-flow.md](docs/auth-flow.md).
+
+**Validação do código TOTP**, em [totpService.js](src/services/totpService.js):
+```js
+async function verifyCode(secret, code, lastTimeStep = null) {
+  const result = await verify({
+    secret,
+    token: code,
+    epochTolerance: TOLERANCE_SECONDS,      // aceita o passo anterior/seguinte (±30 s de relógio)
+    afterTimeStep: lastTimeStep ?? undefined, // anti-replay: recusa passos já usados
+  });
+  return result.valid ? result.timeStep : null;
+}
+```
+
+**Guarda das rotas protegidas**, em [authMiddleware.js](src/middlewares/authMiddleware.js):
+```js
+async function requireAuth(req, res, next) {
+  const { stage, userId, mfaVerifiedAt } = req.session;
+
+  if (stage === STAGES.PASSWORD_OK) throw new AppError(401, 'MFA_REQUIRED', '...');      // só a senha
+  if (stage !== STAGES.AUTHENTICATED || !userId) throw new AppError(401, 'UNAUTHENTICATED', '...');
+
+  if (Date.now() - mfaVerifiedAt > MFA_TTL_MS) {                                            // reautenticação periódica
+    await destroySession(req);
+    throw new AppError(401, 'MFA_EXPIRED', '...');
+  }
+
+  const user = userRepository.findById(userId);                                             // conta desativada cai na hora
+  if (!user || !user.active) { await destroySession(req); throw new AppError(401, 'UNAUTHENTICATED', '...'); }
+
+  req.user = user;
+  next();
+}
+```
+
+**Uso nas rotas**, em [userRoutes.js](src/routes/userRoutes.js):
+```js
+router.use(requireAuth, requireRole('admin')); // senha + 2FA válidos E papel admin
+```
 
 ### Segurança
 | Ameaça | Proteção |
@@ -200,6 +244,10 @@ Arquivos principais da autenticação:
 | Pular o 2FA chamando a API direto | Rotas protegidas exigem `stage = AUTHENTICATED`; `PASSWORD_OK` sozinho dá `401` |
 | Vazamento de dados sensíveis na resposta | `password_hash` e `totp_secret_enc` nunca são serializados |
 | Mensagens que ajudam o atacante | Login responde a mesma mensagem para "e-mail não existe" e "senha errada" |
+| Session fixation (atacante planta um ID de sessão antes do login) | `session.regenerate()` troca o ID ao passar da senha e ao passar do 2FA |
+| Quem sabe só a senha tenta cadastrar o próprio celular | `/auth/2fa/setup` recusa contas que já têm 2FA (`409`) |
+| XSS no front | CSP do `helmet` (só scripts do próprio site) e dados renderizados com `textContent` |
+| Corpo da requisição gigante ou malformado | `express.json` com limite de 10 kb + validação de cada campo (`400`) |
 
 ---
 
@@ -240,6 +288,7 @@ Acesse **http://localhost:3000**.
 | `TOTP_ENCRYPTION_KEY` | **sim** | 64 caracteres hex (32 bytes) | Chave AES-256 usada para cifrar os segredos TOTP |
 | `MFA_TTL_MINUTES` | não | `30` | Minutos até exigir o 2FA de novo (use `1` para demonstrar) |
 | `DATABASE_PATH` | não | `./data/inventory.db` | Caminho do arquivo SQLite |
+| `TZ` | recomendada | `America/Sao_Paulo` | Fuso das datas de empréstimo (sem ela, o Render usa UTC) |
 
 Para gerar valores seguros:
 ```bash
@@ -296,6 +345,13 @@ O seed também cria 5 equipamentos e 3 empréstimos.
 ### Perdi o celular
 Peça ao administrador para **Resetar 2FA** na sua conta. No próximo login você configura o app de novo.
 
+### Testar sem celular
+O app autenticador só calcula o código a partir da **chave manual** (exibida abaixo do QR Code). Para testes, dá para fazer o mesmo no terminal, na pasta do projeto:
+```bash
+node -e "require('otplib').generate({ secret: 'CHAVE_MANUAL' }).then(console.log)"
+```
+Ou use uma extensão de navegador como o *Authenticator* (authenticator.cc), que lê o QR Code da tela.
+
 ---
 
 ## 5. Endpoints e exemplos de requisição
@@ -313,7 +369,7 @@ Em produção, troque `http://localhost:3000` pelo link do Render.
 | POST | `/auth/2fa/enable` | estágio `PASSWORD_OK` | Confirma o primeiro código e ativa o 2FA |
 | POST | `/auth/2fa/verify` | estágio `PASSWORD_OK` | Etapa 2: código TOTP |
 | GET | `/auth/me` | autenticado | Dados do usuário logado e quando o 2FA expira |
-| POST | `/auth/logout` | autenticado | Encerra a sessão |
+| POST | `/auth/logout` | qualquer sessão | Encerra a sessão |
 | GET | `/api/users` | admin | Lista as contas |
 | GET | `/api/users/:id` | admin | Detalha uma conta |
 | POST | `/api/users` | admin | Cria uma conta |
@@ -354,13 +410,27 @@ curl -b cookies.txt -c cookies.txt -X POST http://localhost:3000/auth/2fa/enable
   -H "Content-Type: application/json" -d '{"code":"482913"}'
 ```
 ```json
-{ "message": "2FA ativado com sucesso.", "user": { "id": 2, "name": "Ana Souza", "role": "technician" } }
+{
+  "message": "2FA ativado com sucesso.",
+  "user": { "id": 2, "name": "Ana Souza", "email": "ana@inventory.local", "role": "technician", "totp_enabled": true, "active": true, "created_at": "2026-10-19 21:24:00" }
+}
 ```
 
 ### 2b. Acessos seguintes: verificar o código
 ```bash
 curl -b cookies.txt -c cookies.txt -X POST http://localhost:3000/auth/2fa/verify \
   -H "Content-Type: application/json" -d '{"code":"190375"}'
+```
+```json
+{ "message": "Autenticado com sucesso.", "user": { "id": 2, "name": "Ana Souza", "role": "technician", "...": "..." } }
+```
+
+### Quem está logado
+```bash
+curl -b cookies.txt http://localhost:3000/auth/me
+```
+```json
+{ "user": { "id": 2, "name": "Ana Souza", "role": "technician", "...": "..." }, "mfa_expires_at": "2026-10-19T22:00:00.000Z" }
 ```
 
 ### 3. Rotas protegidas
@@ -371,7 +441,10 @@ curl -b cookies.txt http://localhost:3000/api/equipment
 # Técnico: registrar empréstimo
 curl -b cookies.txt -X POST http://localhost:3000/api/loans \
   -H "Content-Type: application/json" \
-  -d '{"equipment_id":1,"borrower_name":"João Lima","destination_department":"Financeiro","business_days":5,"notes":"Auditoria"}'
+  -d '{"equipment_id":4,"borrower_name":"João Lima","destination_department":"Financeiro","business_days":5,"notes":"Auditoria"}'
+
+# Técnico: registrar devolução
+curl -b cookies.txt -X PATCH http://localhost:3000/api/loans/4/return
 
 # Admin: criar usuário (com a sessão do admin)
 curl -b admin-cookies.txt -X POST http://localhost:3000/api/users \
@@ -392,7 +465,10 @@ Todos os erros seguem o formato `{ "error": { "code": "...", "message": "..." } 
 | Sem cookie / sem login | **401** | `{"error":{"code":"UNAUTHENTICATED","message":"Faça login para continuar."}}` |
 | Só passou da senha (sem 2FA) | **401** | `{"error":{"code":"MFA_REQUIRED","message":"Informe o código do autenticador."}}` |
 | 2FA expirou (`MFA_TTL_MINUTES`) | **401** | `{"error":{"code":"MFA_EXPIRED","message":"Sua verificação em duas etapas expirou. Faça login novamente."}}` |
-| Senha ou código errado | **401** | `{"error":{"code":"INVALID_CREDENTIALS","message":"E-mail ou senha inválidos."}}` |
+| E-mail ou senha errados | **401** | `{"error":{"code":"INVALID_CREDENTIALS","message":"E-mail ou senha inválidos."}}` |
+| Código TOTP errado ou já usado | **401** | `{"error":{"code":"INVALID_TOTP_CODE","message":"Código inválido ou já utilizado. 4 tentativa(s) antes do bloqueio."}}` |
+| Conta desativada pelo admin | **403** | `{"error":{"code":"ACCOUNT_DISABLED","message":"Conta desativada. Procure o administrador."}}` |
+| Admin tentando desativar/excluir a si mesmo | **400** | `{"error":{"code":"SELF_ACTION_NOT_ALLOWED","message":"Você não pode excluir a sua própria conta."}}` |
 | Técnico acessando `/api/users` | **403** | `{"error":{"code":"FORBIDDEN","message":"Você não tem permissão para acessar este recurso."}}` |
 | Admin acessando `/api/equipment` | **403** | idem |
 | Corpo inválido (ex.: código com 5 dígitos) | **400** | `{"error":{"code":"VALIDATION_ERROR","message":"code deve ter 6 dígitos."}}` |
@@ -429,29 +505,42 @@ Exemplo de equipamento combinado com a cotação:
   "brand": "Dell",
   "model": "Latitude 7440",
   "serial_number": "DL7440-8F2K1",
-  "value_usd": 1850.00,
-  "status": "available",
+  "value_usd": 1850,
+  "status": "loaned",
   "location": "Almoxarifado TI - Sala 102",
-  "value_brl": 10045.50,
-  "exchange_rate": { "source": "AwesomeAPI", "usd_brl": 5.43, "fetched_at": "2026-10-19T14:02:11Z" }
+  "created_at": "2026-10-20 01:24:00",
+  "value_brl": 9324.37,
+  "exchange_rate": { "source": "AwesomeAPI", "usd_brl": 5.0402, "quoted_at": "2026-10-19 19:30:06", "stale": false }
 }
 ```
 
-Exemplo de empréstimo com o cálculo de feriados:
+Exemplo de empréstimo registrado em 19/10/2026 com prazo de 10 dias úteis: o 10º dia cairia em Finados (02/11), então a devolução vai para 03/11:
 ```json
 {
   "id": 4,
-  "equipment_id": 1,
+  "equipment_id": 2,
+  "technician_id": 2,
   "borrower_name": "João Lima",
   "destination_department": "Financeiro",
-  "checkout_date": "2026-10-29",
-  "expected_return_date": "2026-11-06",
+  "checkout_date": "2026-10-19",
+  "expected_return_date": "2026-11-03",
+  "returned_at": null,
+  "notes": null,
+  "status": "active",
+  "equipment_asset_tag": "TI-0002",
+  "equipment_description": "Apple MacBook Pro 14 M3",
+  "technician_name": "Ana Souza",
+  "is_overdue": false,
   "skipped_holidays": [{ "date": "2026-11-02", "name": "Finados" }],
-  "status": "active"
+  "holidays_checked": true
 }
 ```
 
-**Resiliência:** as chamadas usam `fetch` com timeout. A última resposta válida fica em cache na memória. Se a API externa estiver fora do ar, a resposta usa o cache e indica `"stale": true`, para a demonstração não depender da internet de terceiros.
+**Resiliência:** as chamadas usam `fetch` com timeout de 5 s ([httpClient.js](src/utils/httpClient.js)) e cache em memória (cotação por 10 min; feriados por ano). Se uma API externa estiver fora do ar, nada quebra:
+- cotação: usa a última conhecida com `"stale": true` (ou `value_brl: null` se nunca houve uma);
+- feriados: o prazo é contado só pulando fins de semana e a resposta traz `"holidays_checked": false`.
+
+Arquivos: [exchangeRateService.js](src/services/exchangeRateService.js), [holidayService.js](src/services/holidayService.js), e a combinação em [equipmentService.js](src/services/equipmentService.js) e [loanService.js](src/services/loanService.js).
 
 ---
 
@@ -469,7 +558,7 @@ O projeto roda no **Render** (plano gratuito).
    - **Runtime:** Node
    - **Build Command:** `npm install`
    - **Start Command:** `npm run seed && npm start`
-4. Em **Environment**, adicione `NODE_ENV=production`, `SESSION_SECRET`, `TOTP_ENCRYPTION_KEY` e `MFA_TTL_MINUTES` (veja a [tabela](#variáveis-de-ambiente)).
+4. Em **Environment**, adicione `NODE_ENV=production`, `SESSION_SECRET`, `TOTP_ENCRYPTION_KEY`, `MFA_TTL_MINUTES` e `TZ=America/Sao_Paulo` (veja a [tabela](#variáveis-de-ambiente)).
 5. **Create Web Service.** Cada push na `main` faz um novo deploy automaticamente.
 
 > No plano gratuito o disco é efêmero: o banco SQLite é recriado pelo seed a cada deploy ou reinício. Os 2FA configurados se perdem nesse momento, o que é aceitável para a demonstração. O serviço também "dorme" após inatividade, então a primeira requisição pode levar cerca de 50 s.
@@ -503,8 +592,17 @@ InventoryManager/
 │   ├── seed.js          # dados iniciais
 │   ├── app.js           # configuração do Express
 │   └── server.js        # inicialização do servidor
-├── public/              # front-end simples (HTML/CSS/JS)
-├── docs/                # plano, fluxo de autenticação, exemplos de requisição
+├── public/              # front-end simples (HTML/CSS/JS puro)
+│   ├── index.html       # login (etapa 1)
+│   ├── setup-2fa.html   # QR Code (primeiro acesso)
+│   ├── verify-2fa.html  # código (acessos seguintes)
+│   ├── admin.html       # gerenciamento de contas
+│   ├── inventory.html   # estoque e empréstimos
+│   └── js/              # um script por página + api.js (helpers compartilhados)
+├── docs/
+│   ├── PLAN.md          # plano do projeto
+│   ├── auth-flow.md     # diagramas do fluxo de autenticação
+│   └── requests.http    # exemplos de todas as requisições (REST Client)
 ├── .env.example
 ├── package.json
 └── README.md
