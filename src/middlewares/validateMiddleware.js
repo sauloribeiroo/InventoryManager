@@ -39,6 +39,9 @@ const isBoolean = (value) => (typeof value === 'boolean' ? null : 'deve ser true
 
 const isOneOf = (allowed) => (value) => (allowed.includes(value) ? null : `deve ser um destes: ${allowed.join(', ')}`);
 
+const isIntegerBetween = (min, max) => (value) =>
+  Number.isInteger(value) && value >= min && value <= max ? null : `deve ser um número inteiro entre ${min} e ${max}`;
+
 // Torna um validador opcional: campo ausente passa; se vier, é validado (usado no PUT)
 const optional = (validator) => (value) => (value === undefined ? null : validator(value));
 
@@ -50,5 +53,6 @@ module.exports = {
   isStrongPassword,
   isBoolean,
   isOneOf,
+  isIntegerBetween,
   optional,
 };
