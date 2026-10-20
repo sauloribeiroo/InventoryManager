@@ -82,6 +82,23 @@ async function confirmTotpSetup(req, code) {
   return userRepository.findById(userId);
 }
 
+// Etapa 2b (acessos seguintes): confere o código atual do app com o segredo salvo na conta.
+async function verifyTotpLogin(req, code) {
+  const user = userRepository.findById(req.session.pendingUserId);
+
+  if (!user.totp_enabled) {
+    throw new AppError(400, 'TOTP_NOT_CONFIGURED', '2FA ainda não configurado. Use /auth/2fa/setup.');
+  }
+
+  const timeStep = await totpService.verifyCode(user.totp_secret_enc, code);
+  if (timeStep === null) {
+    throw new AppError(401, 'INVALID_TOTP_CODE', 'Código inválido. Confira o app autenticador e tente novamente.');
+  }
+
+  await completeAuthentication(req, user.id);
+  return user;
+}
+
 // Os dois fatores foram aprovados: a sessão passa para AUTHENTICATED.
 // mfaVerifiedAt marca quando o código foi validado (usado para exigir o 2FA de novo depois de um tempo).
 function completeAuthentication(req, userId) {
@@ -109,5 +126,6 @@ module.exports = {
   startPendingSession,
   startTotpSetup,
   confirmTotpSetup,
+  verifyTotpLogin,
   destroySession,
 };
