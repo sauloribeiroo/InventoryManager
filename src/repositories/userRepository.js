@@ -10,11 +10,11 @@ function findById(id) {
   return db.prepare('SELECT * FROM users WHERE id = ?').get(id);
 }
 
-// Ativa o 2FA: grava o segredo TOTP confirmado pelo usuário.
-function enableTotp(id, secret) {
+// Ativa o 2FA: grava o segredo TOTP (já cifrado pelo service) confirmado pelo usuário.
+function enableTotp(id, encryptedSecret) {
   db.prepare(
     'UPDATE users SET totp_secret_enc = ?, totp_enabled = 1, last_totp_step = NULL WHERE id = ?'
-  ).run(secret, id);
+  ).run(encryptedSecret, id);
 }
 
 module.exports = { findByEmail, findById, enableTotp };

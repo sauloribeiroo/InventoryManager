@@ -6,6 +6,7 @@
 
 const AppError = require('../utils/AppError');
 const { comparePassword } = require('../utils/password');
+const { encrypt, decrypt } = require('../utils/crypto');
 const userRepository = require('../repositories/userRepository');
 const totpService = require('./totpService');
 
@@ -76,7 +77,7 @@ async function confirmTotpSetup(req, code) {
   }
 
   const userId = req.session.pendingUserId;
-  userRepository.enableTotp(userId, secret);
+  userRepository.enableTotp(userId, encrypt(secret)); // o banco só guarda o segredo cifrado
   await completeAuthentication(req, userId);
 
   return userRepository.findById(userId);
@@ -90,7 +91,8 @@ async function verifyTotpLogin(req, code) {
     throw new AppError(400, 'TOTP_NOT_CONFIGURED', '2FA ainda não configurado. Use /auth/2fa/setup.');
   }
 
-  const timeStep = await totpService.verifyCode(user.totp_secret_enc, code);
+  const secret = decrypt(user.totp_secret_enc); // decifra só em memória, só para validar
+  const timeStep = await totpService.verifyCode(secret, code);
   if (timeStep === null) {
     throw new AppError(401, 'INVALID_TOTP_CODE', 'Código inválido. Confira o app autenticador e tente novamente.');
   }
