@@ -10,6 +10,45 @@ function findById(id) {
   return db.prepare('SELECT * FROM users WHERE id = ?').get(id);
 }
 
+function findAll() {
+  return db.prepare('SELECT * FROM users ORDER BY id').all();
+}
+
+function create({ name, email, passwordHash, role }) {
+  const result = db
+    .prepare('INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)')
+    .run(name, email, passwordHash, role);
+  return findById(result.lastInsertRowid);
+}
+
+// Atualiza só os campos recebidos. As chaves vêm de uma lista fixa no service (nunca do usuário),
+// então montar o SET dinamicamente não abre brecha para SQL injection.
+function update(id, fields) {
+  const columns = Object.keys(fields);
+  if (columns.length === 0) return findById(id);
+
+  const setClause = columns.map((column) => `${column} = :${column}`).join(', ');
+  db.prepare(`UPDATE users SET ${setClause} WHERE id = :id`).run({ ...fields, id });
+  return findById(id);
+}
+
+function remove(id) {
+  db.prepare('DELETE FROM users WHERE id = ?').run(id);
+}
+
+function hasLoans(id) {
+  return Boolean(db.prepare('SELECT 1 FROM loans WHERE technician_id = ? LIMIT 1').get(id));
+}
+
+// Reset do 2FA pelo admin: apaga o segredo; no próximo login o usuário configura um novo QR Code.
+function resetTotp(id) {
+  db.prepare(`
+    UPDATE users
+    SET totp_secret_enc = NULL, totp_enabled = 0, last_totp_step = NULL, failed_attempts = 0, locked_until = NULL
+    WHERE id = ?
+  `).run(id);
+}
+
 // Ativa o 2FA: grava o segredo TOTP (já cifrado pelo service) e o passo do código usado na confirmação.
 function enableTotp(id, encryptedSecret, timeStep) {
   db.prepare(
@@ -35,6 +74,12 @@ function clearFailedAttempts(id) {
 module.exports = {
   findByEmail,
   findById,
+  findAll,
+  create,
+  update,
+  remove,
+  hasLoans,
+  resetTotp,
   enableTotp,
   updateLastTotpStep,
   registerFailedAttempt,

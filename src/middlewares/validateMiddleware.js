@@ -29,4 +29,26 @@ const isEmail = (value) =>
 const isTotpCode = (value) =>
   typeof value === 'string' && /^\d{6}$/.test(value) ? null : 'deve ter 6 dígitos';
 
-module.exports = { validateBody, isRequiredString, isEmail, isTotpCode };
+// Senha inicial criada pelo admin: mínimo 8 caracteres, com letra e número
+const isStrongPassword = (value) =>
+  typeof value === 'string' && value.length >= 8 && /[A-Za-z]/.test(value) && /\d/.test(value)
+    ? null
+    : 'deve ter ao menos 8 caracteres, com letras e números';
+
+const isBoolean = (value) => (typeof value === 'boolean' ? null : 'deve ser true ou false');
+
+const isOneOf = (allowed) => (value) => (allowed.includes(value) ? null : `deve ser um destes: ${allowed.join(', ')}`);
+
+// Torna um validador opcional: campo ausente passa; se vier, é validado (usado no PUT)
+const optional = (validator) => (value) => (value === undefined ? null : validator(value));
+
+module.exports = {
+  validateBody,
+  isRequiredString,
+  isEmail,
+  isTotpCode,
+  isStrongPassword,
+  isBoolean,
+  isOneOf,
+  optional,
+};
