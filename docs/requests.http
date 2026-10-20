@@ -1,0 +1,138 @@
+# Requisições de exemplo — extensão "REST Client" do VS Code (humao.rest-client).
+# Clique em "Send Request" acima de cada bloco. O cookie de sessão é guardado
+# e reenviado automaticamente entre as requisições.
+#
+# Para gerar o código TOTP sem o celular (use a manualKey do passo 2a):
+#   node -e "require('otplib').generate({ secret: 'MANUAL_KEY' }).then(console.log)"
+
+@baseUrl = http://localhost:3000
+# @baseUrl = https://<app>.onrender.com
+
+### Health check (público)
+GET {{baseUrl}}/health
+
+#######################################################################
+# FLUXO DO TÉCNICO
+#######################################################################
+
+### 1. Login — etapa 1 (senha)
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "ana@inventory.local", "password": "Tech@123" }
+
+### 2a. Primeiro acesso — gera o QR Code e a chave manual
+GET {{baseUrl}}/auth/2fa/setup
+
+### 2a. Primeiro acesso — confirma o primeiro código do app e ativa o 2FA
+POST {{baseUrl}}/auth/2fa/enable
+Content-Type: application/json
+
+{ "code": "123456" }
+
+### 2b. Acessos seguintes — código atual do app
+POST {{baseUrl}}/auth/2fa/verify
+Content-Type: application/json
+
+{ "code": "123456" }
+
+### Quem está logado e até quando o 2FA vale
+GET {{baseUrl}}/auth/me
+
+### Estoque (com valor em R$ — AwesomeAPI)
+GET {{baseUrl}}/api/equipment
+
+### Estoque filtrado
+GET {{baseUrl}}/api/equipment?status=available&type=notebook
+
+### Detalhe de um equipamento
+GET {{baseUrl}}/api/equipment/1
+
+### Histórico de empréstimos
+GET {{baseUrl}}/api/loans
+
+### Empréstimos ativos
+GET {{baseUrl}}/api/loans?status=active
+
+### Novo empréstimo (prazo em dias úteis, pulando feriados — BrasilAPI)
+POST {{baseUrl}}/api/loans
+Content-Type: application/json
+
+{
+  "equipment_id": 4,
+  "borrower_name": "João Lima",
+  "destination_department": "Financeiro",
+  "business_days": 10,
+  "notes": "Auditoria"
+}
+
+### Registrar devolução
+PATCH {{baseUrl}}/api/loans/4/return
+
+### Técnico tentando rota de admin → 403
+GET {{baseUrl}}/api/users
+
+### Logout
+POST {{baseUrl}}/auth/logout
+
+### Depois do logout → 401
+GET {{baseUrl}}/auth/me
+
+#######################################################################
+# FLUXO DO ADMIN (faça login + 2FA com admin@inventory.local antes)
+#######################################################################
+
+### Login do admin
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "admin@inventory.local", "password": "Admin@123" }
+
+### Listar contas
+GET {{baseUrl}}/api/users
+
+### Detalhar conta
+GET {{baseUrl}}/api/users/2
+
+### Criar conta (nasce sem 2FA)
+POST {{baseUrl}}/api/users
+Content-Type: application/json
+
+{ "name": "Diego Alves", "email": "diego@inventory.local", "password": "Tech@123", "role": "technician" }
+
+### Editar conta (todos os campos são opcionais)
+PUT {{baseUrl}}/api/users/5
+Content-Type: application/json
+
+{ "name": "Diego A. Alves", "active": false }
+
+### Resetar o 2FA (técnico perdeu o celular)
+POST {{baseUrl}}/api/users/2/reset-2fa
+
+### Excluir conta (usuários com empréstimos não podem ser excluídos → 409)
+DELETE {{baseUrl}}/api/users/5
+
+### Admin tentando ver o estoque → 403
+GET {{baseUrl}}/api/equipment
+
+#######################################################################
+# ERROS
+#######################################################################
+
+### 400 — corpo inválido
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "nao-e-email", "password": "" }
+
+### 401 — senha errada
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "ana@inventory.local", "password": "errada" }
+
+### 401 — código com formato certo mas inválido (5 seguidos → 423)
+POST {{baseUrl}}/auth/2fa/verify
+Content-Type: application/json
+
+{ "code": "000000" }
