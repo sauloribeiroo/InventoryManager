@@ -2,6 +2,7 @@
 
 const authService = require('../services/authService');
 const { toPublicUser } = require('../services/userService');
+const env = require('../config/env');
 
 const NEXT_STEP_MESSAGES = {
   SETUP_2FA: 'Senha correta. Configure o 2FA para continuar.',
@@ -35,6 +36,12 @@ async function verifyTotp(req, res) {
   res.json({ message: 'Autenticado com sucesso.', user: toPublicUser(user) });
 }
 
+// GET /auth/me — quem está logado e até quando o 2FA vale
+function me(req, res) {
+  const mfaExpiresAt = new Date(req.session.mfaVerifiedAt + env.mfaTtlMinutes * 60 * 1000);
+  res.json({ user: toPublicUser(req.user), mfa_expires_at: mfaExpiresAt.toISOString() });
+}
+
 // POST /auth/logout
 async function logout(req, res) {
   await authService.destroySession(req);
@@ -42,4 +49,4 @@ async function logout(req, res) {
   res.json({ message: 'Sessão encerrada.' });
 }
 
-module.exports = { login, setupTotp, enableTotp, verifyTotp, logout };
+module.exports = { login, setupTotp, enableTotp, verifyTotp, me, logout };
