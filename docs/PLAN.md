@@ -208,3 +208,20 @@ Dados: os 5 números de série do seed, com **pelo menos um com garantia vencida
 
 ### Branches sugeridas
 `feat/warranty-api` (o serviço) → `feat/warranty-integration` (consumir no InventoryManager e remover a AwesomeAPI) → `docs/warranty-readme` (README e requests.http). Boa tarefa para outro integrante da equipe.
+
+## Implementação futura: refatoração da autenticação para legibilidade
+
+> Status: **planejado, ainda não iniciado.** Fazer depois da apresentação parcial: o código atual funciona e está testado.
+
+Objetivo: deixar a parte da autenticação mais fácil de ler e de explicar, **sem mudar o comportamento** da API (mesmas rotas, respostas e códigos de erro).
+
+1. **Dividir o `authService.js`** (hoje com ~165 linhas, misturando três assuntos):
+   - `authService.js`: só o fluxo (senha → setup/verify → autenticado), lido de cima para baixo.
+   - `sessionService.js`: `STAGES`, criar/regenerar/destruir a sessão e o cálculo da expiração do 2FA.
+   - `lockoutService.js`: `assertNotLocked` e o registro de tentativas erradas (bloqueio após 5 erros).
+2. **Remover a repetição entre `confirmTotpSetup` e `verifyTotpLogin`**: os dois fazem "checar bloqueio → validar código → registrar erro ou zerar contador → autenticar". Extrair uma função comum (ex.: `checkTotpCode`).
+3. **Deixar o `throw` visível**: trocar `if (timeStep === null) registerInvalidCode(user);` (que lança o erro escondido dentro da função) por `if (timeStep === null) throw invalidCodeError(user);`.
+4. **Calcular a expiração do 2FA em um lugar só**: a conta `mfaVerifiedAt + MFA_TTL` aparece hoje no `authMiddleware.js` e no `authController.js` (`/auth/me`). Centralizar no `sessionService`.
+5. **Unificar o `session.regenerate()`**: o mesmo bloco aparece em `startPendingSession` e `completeAuthentication`. Virar uma função só no `sessionService`.
+
+Como fazer: branch `refactor/auth-readability`, um commit `refactor:` por item. Antes do PR, repetir os testes de ponta a ponta (login, setup, verify, anti-replay, bloqueio 423, rate limit 429, expiração `MFA_EXPIRED`, 403 por papel). Depois, atualizar os nomes dos arquivos no README (seção "Implementação") e no `docs/auth-flow.md`.
