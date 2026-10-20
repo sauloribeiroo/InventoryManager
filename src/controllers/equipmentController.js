@@ -3,14 +3,14 @@
 const equipmentService = require('../services/equipmentService');
 
 // GET /api/equipment?status=available&type=notebook
-function list(req, res) {
+async function list(req, res) {
   const { status, type } = req.query;
-  res.json(equipmentService.list({ status, type }));
+  res.json(await equipmentService.list({ status, type }));
 }
 
 // GET /api/equipment/:id
-function getById(req, res) {
-  res.json(equipmentService.getById(Number(req.params.id)));
+async function getById(req, res) {
+  res.json(await equipmentService.getById(Number(req.params.id)));
 }
 
 module.exports = { list, getById };
