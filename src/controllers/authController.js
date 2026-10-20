@@ -1,6 +1,7 @@
 // Recebe as requisições de autenticação, chama o authService e monta a resposta HTTP.
 
 const authService = require('../services/authService');
+const { toPublicUser } = require('../services/userService');
 
 const NEXT_STEP_MESSAGES = {
   SETUP_2FA: 'Senha correta. Configure o 2FA para continuar.',
@@ -16,6 +17,18 @@ async function login(req, res) {
   res.json({ message: NEXT_STEP_MESSAGES[next], next });
 }
 
+// GET /auth/2fa/setup
+async function setupTotp(req, res) {
+  const setup = await authService.startTotpSetup(req);
+  res.json(setup);
+}
+
+// POST /auth/2fa/enable
+async function enableTotp(req, res) {
+  const user = await authService.confirmTotpSetup(req, req.body.code);
+  res.json({ message: '2FA ativado com sucesso.', user: toPublicUser(user) });
+}
+
 // POST /auth/logout
 async function logout(req, res) {
   await authService.destroySession(req);
@@ -23,4 +36,4 @@ async function logout(req, res) {
   res.json({ message: 'Sessão encerrada.' });
 }
 
-module.exports = { login, logout };
+module.exports = { login, setupTotp, enableTotp, logout };

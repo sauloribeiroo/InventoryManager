@@ -26,4 +26,7 @@ const isRequiredString = (value) =>
 const isEmail = (value) =>
   typeof value === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? null : 'deve ser um e-mail válido';
 
-module.exports = { validateBody, isRequiredString, isEmail };
+const isTotpCode = (value) =>
+  typeof value === 'string' && /^\d{6}$/.test(value) ? null : 'deve ter 6 dígitos';
+
+module.exports = { validateBody, isRequiredString, isEmail, isTotpCode };
