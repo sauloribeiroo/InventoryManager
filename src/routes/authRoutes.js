@@ -14,6 +14,9 @@ router.post('/login', validateBody({ email: isEmail, password: isRequiredString 
 router.get('/2fa/setup', requirePendingMfa, authController.setupTotp);
 router.post('/2fa/enable', requirePendingMfa, validateBody({ code: isTotpCode }), authController.enableTotp);
 
+// Etapa 2b: acessos seguintes (código atual do app)
+router.post('/2fa/verify', requirePendingMfa, validateBody({ code: isTotpCode }), authController.verifyTotp);
+
 router.post('/logout', authController.logout);
 
 module.exports = router;
