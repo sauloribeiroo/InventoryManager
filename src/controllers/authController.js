@@ -21,7 +21,7 @@ async function login(req, res) {
 // GET /auth/2fa/setup
 async function setupTotp(req, res) {
   const setup = await authService.startTotpSetup(req);
-  res.json(setup);
+  res.json(setup);   //chama e devolve o QR CODE
 }
 
 // POST /auth/2fa/enable
@@ -33,7 +33,7 @@ async function enableTotp(req, res) {
 // POST /auth/2fa/verify
 async function verifyTotp(req, res) {
   const user = await authService.verifyTotpLogin(req, req.body.code);
-  res.json({ message: 'Autenticado com sucesso.', user: toPublicUser(user) });
+  res.json({ message: 'Autenticado com sucesso.', user: toPublicUser(user) });  //confere o código dos acessos seguintes
 }
 
 // GET /auth/me — quem está logado e até quando o 2FA vale
@@ -43,7 +43,7 @@ function me(req, res) {
 }
 
 // POST /auth/logout
-async function logout(req, res) {
+async function logout(req, res) {   //fim da sessão
   await authService.destroySession(req);
   res.clearCookie('sid');
   res.json({ message: 'Sessão encerrada.' });
