@@ -27,4 +27,13 @@ function updateStatus(id, status) {
   db.prepare('UPDATE equipment SET status = ? WHERE id = ?').run(status, id);
 }
 
-module.exports = { findAll, findById, updateStatus };
+//para controlar a reserva de equipamento : só vai mudar para 'loaned' se ele estiver 'available'
+// vai devolver true se conseguir reservar ou false se outro emprestimo chegar primeiro
+function emprestadoSeDisponivel(id){
+  const resultado = db
+  .prepare("UPDATE equipment SET status = 'loaned' WHERE id = ? AND status = 'available'")
+  .run(id);
+
+  return resultado.changes === 1;
+}
+module.exports = { findAll, findById, updateStatus, emprestadoSeDisponivel};

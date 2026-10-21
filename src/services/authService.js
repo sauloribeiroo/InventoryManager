@@ -17,7 +17,7 @@ const STAGES = {
 
 // Bloqueio da conta: o código tem 6 dígitos (1 milhão de combinações). Com no máximo
 // 5 erros seguidos a cada 15 minutos, adivinhar o código por tentativa e erro fica inviável.
-const MAX_FAILED_TOTP_ATTEMPTS = 5;
+const MAX_FAILED_TOTP_ATTEMPTS = 5;   //limite de 5 erros seguidos a cada 15 minutos.
 const LOCK_MINUTES = 15;
 
 function assertNotLocked(user) {
@@ -43,7 +43,7 @@ function registerInvalidCode(user) {
 }
 
 // Etapa 1 (primeiro fator): confere e-mail + senha e diz qual é o próximo passo.
-async function verifyPassword(email, password) {
+async function verifyPassword(email, password) {  //primeiro fator, que é a verificação por senha
   const user = userRepository.findByEmail(email.trim().toLowerCase());
 
   // Mesma resposta para "e-mail não existe" e "senha errada":
@@ -79,7 +79,7 @@ function startPendingSession(req, userId) {
 
 // Etapa 2a (primeiro acesso): gera o segredo e o QR Code.
 // O segredo fica só na SESSÃO até o usuário provar, com um código válido, que configurou o app.
-async function startTotpSetup(req) {
+async function startTotpSetup(req) {   //segundo fator, o QR code
   const user = userRepository.findById(req.session.pendingUserId);
 
   // Sem isso, quem soubesse só a senha poderia cadastrar o próprio celular e "roubar" o 2FA da conta
@@ -94,7 +94,7 @@ async function startTotpSetup(req) {
 }
 
 // Etapa 2a (confirmação): primeiro código válido → salva o segredo na conta e autentica.
-async function confirmTotpSetup(req, code) {
+async function confirmTotpSetup(req, code) {  //ativação a 2FA
   const secret = req.session.tempTotpSecret;
   if (!secret) {
     throw new AppError(400, 'TOTP_SETUP_NOT_STARTED', 'Gere o QR Code em /auth/2fa/setup antes de confirmar.');

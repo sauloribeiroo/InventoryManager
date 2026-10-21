@@ -85,6 +85,8 @@ async function returnLoan(loan) {
 
 document.getElementById('loan-form').addEventListener('submit', async (event) => {
   event.preventDefault();
+  const botao = event.target.querySelector('button[type="submit"]');
+  botao.disabled = true; // evita o clique duplo enquanto o pedido está em andamento
   try {
     const loan = await protectedApi('POST', '/api/loans', {
       equipment_id: Number(document.getElementById('equipment-id').value),
@@ -105,6 +107,8 @@ document.getElementById('loan-form').addEventListener('submit', async (event) =>
     await Promise.all([loadEquipment(), loadLoans()]);
   } catch (error) {
     showMessage(loanMessage, error.message);
+  } finally {
+    botao.disabled = false; // libera o botão com sucesso ou com erro
   }
 });
 

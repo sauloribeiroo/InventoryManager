@@ -41,20 +41,25 @@ async function create(data, technicianId) {
     (date) => holidays.has(toISODate(date))
   );
 
-  // Empréstimo + status do equipamento mudam juntos (ou nenhum muda)
-  const loan = runInTransaction(() => {
-    const created = loanRepository.create({
-      equipment_id: equipment.id,
-      technician_id: technicianId,
-      borrower_name: data.borrower_name.trim(),
-      destination_department: data.destination_department.trim(),
-      checkout_date: toISODate(today),
-      expected_return_date: toISODate(expectedReturn),
-      notes: data.notes?.trim() || null,
+    // Empréstimo + status do equipamento mudam juntos (ou nenhum muda)
+    const loan = runInTransaction(() => {
+      // Reserva o equipamento no próprio banco: se outro pedido chegou primeiro, falha aqui
+      const reservou = equipmentRepository.emprestadoSeDisponivel(equipment.id); // primeiro reserva com emprestadoSeDisponivel, depois que cria o emprestimo
+      if (!reservou) {
+        throw new AppError(409, 'CONFLICT', `Equipamento ${equipment.asset_tag} acabou de ser emprestado ou não está disponível.`);
+      } //só um consegue reservar, o outro recebe 409
+  
+      return loanRepository.create({
+        equipment_id: equipment.id,
+        technician_id: technicianId,
+        borrower_name: data.borrower_name.trim(),
+        destination_department: data.destination_department.trim(),
+        checkout_date: toISODate(today),
+        expected_return_date: toISODate(expectedReturn),
+        notes: data.notes?.trim() || null,
+      });
     });
-    equipmentRepository.updateStatus(equipment.id, 'loaned');
-    return created;
-  });
+  
 
   return {
     ...withOverdueFlag(loan),
