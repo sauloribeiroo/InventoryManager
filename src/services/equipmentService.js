@@ -1,7 +1,7 @@
 // Regras de negócio do estoque de equipamentos (acesso do técnico).
 //
-// Integração externa: os dados locais (value_usd) são combinados com a cotação do dólar
-// da AwesomeAPI para devolver também o valor em reais (value_brl).
+// Integração externa: os dados locais (value_usd) são combinados com a cotação do dólar (AwesomeAPI). Talvez a gente tire pois comecei a estranhar sentido nessa API para o projeto
+
 
 const AppError = require('../utils/AppError');
 const equipmentRepository = require('../repositories/equipmentRepository');
