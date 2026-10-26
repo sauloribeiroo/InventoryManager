@@ -10,6 +10,7 @@ const AppError = require('../utils/AppError');
 function validateBody(rules) {
   return (req, res, next) => {
     const body = req.body || {};
+    req.body = body // express 5: sem corpo, req.body vem undefined; garante um objeto
     for (const [field, validator] of Object.entries(rules)) {
       const message = validator(body[field]);
       if (message) {
