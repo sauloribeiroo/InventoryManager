@@ -42,6 +42,15 @@ function registerInvalidCode(user) {
   throw new AppError(401, 'INVALID_TOTP_CODE', `Código inválido ou já utilizado. ${remaining} tentativa(s) antes do bloqueio.`);
 }
 
+// Usuário da sessão pendente; se foi apagado ou desativado no meio do login, a sessão não vale mais
+function findPendingUser(req) {
+  const user = userRepository.findById(req.session.pendingUserId);
+  if (!user || !user.active) {
+    throw new AppError(401, 'UNAUTHENTICATED', 'Conta indisponível. Faça login novamente.');
+  }
+  return user;
+}
+
 // Etapa 1 (primeiro fator): confere e-mail + senha e diz qual é o próximo passo.
 async function verifyPassword(email, password) {  //primeiro fator, que é a verificação por senha
   const user = userRepository.findByEmail(email.trim().toLowerCase());
@@ -80,7 +89,7 @@ function startPendingSession(req, userId) {
 // Etapa 2a (primeiro acesso): gera o segredo e o QR Code.
 // O segredo fica só na SESSÃO até o usuário provar, com um código válido, que configurou o app.
 async function startTotpSetup(req) {   //segundo fator, o QR code
-  const user = userRepository.findById(req.session.pendingUserId);
+  const user = findPendingUser(req);
 
   // Sem isso, quem soubesse só a senha poderia cadastrar o próprio celular e "roubar" o 2FA da conta
   if (user.totp_enabled) {
@@ -100,7 +109,7 @@ async function confirmTotpSetup(req, code) {  //ativação a 2FA
     throw new AppError(400, 'TOTP_SETUP_NOT_STARTED', 'Gere o QR Code em /auth/2fa/setup antes de confirmar.');
   }
 
-  const user = userRepository.findById(req.session.pendingUserId);
+  const user = findPendingUser(req);
   assertNotLocked(user);
 
   const timeStep = await totpService.verifyCode(secret, code);
@@ -115,7 +124,7 @@ async function confirmTotpSetup(req, code) {  //ativação a 2FA
 
 // Etapa 2b (acessos seguintes): confere o código atual do app com o segredo salvo na conta.
 async function verifyTotpLogin(req, code) {
-  const user = userRepository.findById(req.session.pendingUserId);
+  const user = findPendingUser(req);
 
   if (!user.totp_enabled) {
     throw new AppError(400, 'TOTP_NOT_CONFIGURED', '2FA ainda não configurado. Use /auth/2fa/setup.');
