@@ -10,6 +10,9 @@ const { encrypt, decrypt } = require('../utils/crypto');
 const userRepository = require('../repositories/userRepository');
 const totpService = require('./totpService');
 
+// Hash de uma senha qualquer, só para gastar o mesmo tempo do bcrypt quando o e-mail não existe
+const DUMMY_HASH = '$2b$10$d7N2ehtLqv4fsbAw6PC0Te7s/PW1AqBRIngrXGYteTrKtdL5UBC2u';
+
 const STAGES = {
   PASSWORD_OK: 'PASSWORD_OK',
   AUTHENTICATED: 'AUTHENTICATED',
@@ -57,8 +60,9 @@ async function verifyPassword(email, password) {  //primeiro fator, que é a ver
 
   // Mesma resposta para "e-mail não existe" e "senha errada":
   // o atacante não descobre quais e-mails estão cadastrados.
-  const passwordMatches = user && (await comparePassword(password, user.password_hash));
-  if (!passwordMatches) {
+  // O bcrypt roda nos dois casos, senão a resposta mais rápida entregaria que o e-mail não existe.
+  const passwordMatches = await comparePassword(password, user ? user.password_hash : DUMMY_HASH);
+  if (!user || !passwordMatches) {
     throw new AppError(401, 'INVALID_CREDENTIALS', 'E-mail ou senha inválidos.');
   }
 
