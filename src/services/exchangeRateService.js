@@ -3,7 +3,7 @@
 //
 // Cache em memória por 10 minutos: evita uma chamada externa a cada listagem do estoque.
 // Se a API cair, usamos a última cotação conhecida e marcamos stale: true.
-
+const {fetchJson} = require('../utils/httpClient');
 const URL = 'https://economia.awesomeapi.com.br/json/last/USD-BRL';
 const CACHE_TTL_MS = 10 * 60 * 1000;
 const ESPERA_APOS_FALHA_MS = 30 * 1000; // depois de uma falha, não tenta de novo por 30 s
