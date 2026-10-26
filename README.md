@@ -288,6 +288,7 @@ Acesse **http://localhost:3000**.
 | `TOTP_ENCRYPTION_KEY` | **sim** | 64 caracteres hex (32 bytes) | Chave AES-256 usada para cifrar os segredos TOTP |
 | `MFA_TTL_MINUTES` | não | `30` | Minutos até exigir o 2FA de novo (use `1` para demonstrar) |
 | `DATABASE_PATH` | não | `./data/inventory.db` | Caminho do arquivo SQLite |
+| `SEED_ADMIN_PASSWORD` / `SEED_TECH_PASSWORD` | **em produção** | senha forte | Senhas dos usuários criados pelo `npm run seed` (em desenvolvimento, sem elas valem as padrão abaixo) |
 | `TZ` | recomendada | `America/Sao_Paulo` | Fuso das datas de empréstimo (sem ela, o Render usa UTC) |
 
 Para gerar valores seguros:
@@ -297,6 +298,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 ### Usuários de exemplo (seed)
 Nenhum deles tem 2FA configurado, então o primeiro login de cada um pede o QR Code.
+As senhas abaixo valem **só em desenvolvimento local**: com `NODE_ENV=production`, o seed exige `SEED_ADMIN_PASSWORD` e `SEED_TECH_PASSWORD`.
 
 | Papel | E-mail | Senha |
 |---|---|---|
