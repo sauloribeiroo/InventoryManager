@@ -17,6 +17,11 @@ function errorHandler(err, req, res, next) {
   if (err.type === 'entity.parse.failed') {
     return res.status(400).json({ error: { code: 'INVALID_JSON', message: 'Corpo da requisição não é um JSON válido.' } });
   }
+    // Corpo maior que o limite do express.json (10 kb)
+    if (err.type === 'entity.too.large') {
+      return res.status(413).json({ error: { code: 'PAYLOAD_TOO_LARGE', message: 'Corpo da requisição maior que o permitido (10 kb).' } });
+    }
+  
 
   // Erro inesperado: registra no log, mas não expõe detalhes internos ao cliente
   console.error(err);
