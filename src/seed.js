@@ -7,8 +7,16 @@ const { hashPassword } = require('./utils/password');
 const { toISODate, addDays } = require('./utils/formatDate');
 
 async function seed() {
-  const adminHash = await hashPassword('Admin@123');
-  const techHash = await hashPassword('Tech@123');
+  // Em produção as senhas vêm do ambiente; as senhas padrão só valem para desenvolvimento local
+  const isProduction = process.env.NODE_ENV === 'production';
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD || (isProduction ? null : 'Admin@123');
+  const techPassword = process.env.SEED_TECH_PASSWORD || (isProduction ? null : 'Tech@123');
+  if (!adminPassword || !techPassword) {
+    throw new Error('Em produção, defina SEED_ADMIN_PASSWORD e SEED_TECH_PASSWORD antes de rodar o seed');
+  }
+
+  const adminHash = await hashPassword(adminPassword);
+  const techHash = await hashPassword(techPassword);
 
   const users = [
     { name: 'Administrador TI', email: 'admin@inventory.local', password_hash: adminHash, role: 'admin' },
