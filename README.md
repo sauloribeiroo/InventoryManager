@@ -4,7 +4,7 @@ API REST para controlar o empréstimo de equipamentos de alto valor (notebooks, 
 
 > Projeto da AV2 de **Técnicas de Integração de Sistemas**: Autenticação em Sistemas Integrados.
 
-- **Versão no ar:** `https://<app>.onrender.com` (link do Render, preenchido após o deploy)
+- **Versão no ar:** https://inventorymanager-pjpd.onrender.com
 - **Plano do projeto:** [docs/PLAN.md](docs/PLAN.md)
 
 ---
@@ -164,7 +164,7 @@ sequenceDiagram
 - Sessões e contadores do rate limit ficam **na memória do servidor**: reiniciar o servidor desloga todo mundo, e não funciona com várias instâncias. Em produção real, usaríamos um store compartilhado (ex.: Redis).
 - O **reset do 2FA** não derruba uma sessão que o usuário já tenha aberta (ela vale até expirar pelo `MFA_TTL_MINUTES`). Para cortar o acesso na hora, o admin deve **desativar** a conta: isso é checado a cada requisição.
 - Não há **códigos de recuperação** nem troca de senha pelo próprio usuário.
-- O repositório **não tem testes automatizados**: os testes foram feitos manualmente e com scripts de apoio.
+- Os testes automatizados cobrem a API de ponta a ponta com as APIs externas simuladas; não há testes do front-end no navegador.
 
 ### Implementação
 | Tecnologia | Uso |
@@ -322,6 +322,7 @@ O seed também cria 5 equipamentos e 3 empréstimos.
 | `npm run dev` | Sobe com reload automático (`node --watch`) |
 | `npm start` | Sobe em modo produção |
 | `npm run seed` | Recria o banco com os dados de exemplo |
+| `npm test` | Roda os testes automatizados (unitários e de integração) |
 
 ---
 
@@ -559,7 +560,7 @@ Arquivos: [exchangeRateService.js](src/services/exchangeRateService.js), [holida
 
 O projeto roda no **Render** (plano gratuito).
 
-**Versão no ar:** `https://<app>.onrender.com`
+**Versão no ar:** https://inventorymanager-pjpd.onrender.com
 
 ### Como fazer o deploy
 1. Crie uma conta em [render.com](https://render.com).
@@ -625,6 +626,7 @@ InventoryManager/
 │   ├── admin.html       # gerenciamento de contas
 │   ├── inventory.html   # estoque e empréstimos
 │   └── js/              # um script por página + api.js (helpers compartilhados)
+├── tests/               # testes automatizados (unitários e de integração), rodam com npm test
 ├── docs/
 │   ├── PLAN.md          # plano do projeto
 │   ├── auth-flow.md     # diagramas do fluxo de autenticação

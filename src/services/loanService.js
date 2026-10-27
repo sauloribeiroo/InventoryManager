@@ -33,23 +33,22 @@ async function create(data, technicianId) {
     (date) => holidays.has(toISODate(date))
   );
 
-    const loan = runInTransaction(() => {
-      const reservou = equipmentRepository.emprestadoSeDisponivel(equipment.id);
-      if (!reservou) {
-        throw new AppError(409, 'CONFLICT', `Equipamento ${equipment.asset_tag} acabou de ser emprestado ou não está disponível.`);
-      }
-  
-      return loanRepository.create({
-        equipment_id: equipment.id,
-        technician_id: technicianId,
-        borrower_name: data.borrower_name.trim(),
-        destination_department: data.destination_department.trim(),
-        checkout_date: toISODate(today),
-        expected_return_date: toISODate(expectedReturn),
-        notes: data.notes?.trim() || null,
-      });
+  const loan = runInTransaction(() => {
+    const reservou = equipmentRepository.emprestadoSeDisponivel(equipment.id);
+    if (!reservou) {
+      throw new AppError(409, 'CONFLICT', `Equipamento ${equipment.asset_tag} acabou de ser emprestado ou não está disponível.`);
+    }
+
+    return loanRepository.create({
+      equipment_id: equipment.id,
+      technician_id: technicianId,
+      borrower_name: data.borrower_name.trim(),
+      destination_department: data.destination_department.trim(),
+      checkout_date: toISODate(today),
+      expected_return_date: toISODate(expectedReturn),
+      notes: data.notes?.trim() || null,
     });
-  
+  });
 
   return {
     ...withOverdueFlag(loan),
