@@ -1,5 +1,3 @@
-// Tabela de usuários: guarda a senha (hash) e os dados do segundo fator (TOTP).
-
 const ROLES = ['admin', 'technician'];
 
 const createTableSql = `

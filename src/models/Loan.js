@@ -1,5 +1,3 @@
-// Tabela de empréstimos: liga um equipamento ao técnico que registrou a saída.
-
 const STATUSES = ['active', 'returned'];
 
 const createTableSql = `

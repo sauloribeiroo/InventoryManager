@@ -1,8 +1,3 @@
-// Regras de negócio do estoque de equipamentos (acesso do técnico).
-//
-// Integração externa: os dados locais (value_usd) são combinados com a cotação do dólar (AwesomeAPI). Talvez a gente tire pois comecei a estranhar sentido nessa API para o projeto
-
-
 const AppError = require('../utils/AppError');
 const equipmentRepository = require('../repositories/equipmentRepository');
 const exchangeRateService = require('./exchangeRateService');
@@ -25,7 +20,7 @@ async function list(filters = {}) {
   }
 
   const items = equipmentRepository.findAll(filters);
-  const rate = await exchangeRateService.getUsdBrlRate(); // uma consulta para a lista inteira
+  const rate = await exchangeRateService.getUsdBrlRate();
   return items.map((item) => withValueInBrl(item, rate));
 }
 

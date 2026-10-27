@@ -1,5 +1,3 @@
-// Etapa 2a (primeiro acesso): mostra o QR Code e confirma o primeiro código do app.
-
 const message = document.getElementById('message');
 
 async function loadQrCode() {
@@ -9,7 +7,7 @@ async function loadQrCode() {
     document.getElementById('manual-key').textContent = setup.manualKey;
   } catch (error) {
     if (error.code === 'TOTP_ALREADY_ENABLED') window.location.href = '/verify-2fa.html';
-    else goToLogin(error.code); // sessão sem senha validada → volta ao login
+    else goToLogin(error.code);
   }
 }
 

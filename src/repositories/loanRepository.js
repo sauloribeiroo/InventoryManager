@@ -1,6 +1,3 @@
-// SQL dos empréstimos. As consultas trazem junto o patrimônio/modelo do equipamento
-// e o nome do técnico que registrou, para o histórico ficar legível.
-
 const db = require('../config/database');
 
 const SELECT_WITH_DETAILS = `
@@ -13,7 +10,6 @@ const SELECT_WITH_DETAILS = `
   JOIN users ON users.id = loans.technician_id
 `;
 
-// Filtro opcional: ?status=active | returned
 function findAll({ status } = {}) {
   if (status) {
     return db.prepare(`${SELECT_WITH_DETAILS} WHERE loans.status = ? ORDER BY loans.id DESC`).all(status);

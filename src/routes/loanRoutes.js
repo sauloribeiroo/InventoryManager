@@ -1,5 +1,3 @@
-// Rotas de empréstimos: /api/loans/* — exigem sessão autenticada (senha + 2FA) E papel technician.
-
 const { Router } = require('express');
 const loanController = require('../controllers/loanController');
 const { requireAuth } = require('../middlewares/authMiddleware');
