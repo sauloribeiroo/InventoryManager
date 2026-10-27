@@ -1,5 +1,3 @@
-// Tela do admin: gerencia as contas que têm acesso ao sistema.
-
 const ROLE_LABELS = { admin: 'Administrador', technician: 'Técnico' };
 const listMessage = document.getElementById('list-message');
 const createMessage = document.getElementById('create-message');
@@ -54,7 +52,6 @@ async function removeUser(user) {
   return `Conta de ${user.name} excluída.`;
 }
 
-// Executa uma ação da tabela, mostra o resultado e recarrega a lista
 async function runAction(action) {
   try {
     const text = await action();

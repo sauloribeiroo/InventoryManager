@@ -1,16 +1,9 @@
-// Regras do login. A sessão passa por estágios:
-//
-//   (sem sessão) ──senha correta──► PASSWORD_OK ──código TOTP correto──► AUTHENTICATED
-//
-// Em PASSWORD_OK o usuário só pode acessar as rotas do 2FA; nenhuma rota protegida.
-
 const AppError = require('../utils/AppError');
 const { comparePassword } = require('../utils/password');
 const { encrypt, decrypt } = require('../utils/crypto');
 const userRepository = require('../repositories/userRepository');
 const totpService = require('./totpService');
 
-// Hash de uma senha qualquer, só para gastar o mesmo tempo do bcrypt quando o e-mail não existe
 const DUMMY_HASH = '$2b$10$d7N2ehtLqv4fsbAw6PC0Te7s/PW1AqBRIngrXGYteTrKtdL5UBC2u';
 
 const STAGES = {
@@ -18,9 +11,7 @@ const STAGES = {
   AUTHENTICATED: 'AUTHENTICATED',
 };
 
-// Bloqueio da conta: o código tem 6 dígitos (1 milhão de combinações). Com no máximo
-// 5 erros seguidos a cada 15 minutos, adivinhar o código por tentativa e erro fica inviável.
-const MAX_FAILED_TOTP_ATTEMPTS = 5;   //limite de 5 erros seguidos a cada 15 minutos.
+const MAX_FAILED_TOTP_ATTEMPTS = 5;
 const LOCK_MINUTES = 15;
 
 function assertNotLocked(user) {
@@ -30,7 +21,6 @@ function assertNotLocked(user) {
   }
 }
 
-// Código errado: conta mais uma falha; na 5ª seguida, bloqueia a conta por LOCK_MINUTES.
 function registerInvalidCode(user) {
   const attempts = user.failed_attempts + 1;
 
@@ -45,7 +35,6 @@ function registerInvalidCode(user) {
   throw new AppError(401, 'INVALID_TOTP_CODE', `Código inválido ou já utilizado. ${remaining} tentativa(s) antes do bloqueio.`);
 }
 
-// Usuário da sessão pendente; se foi apagado ou desativado no meio do login, a sessão não vale mais
 function findPendingUser(req) {
   const user = userRepository.findById(req.session.pendingUserId);
   if (!user || !user.active) {
@@ -54,13 +43,9 @@ function findPendingUser(req) {
   return user;
 }
 
-// Etapa 1 (primeiro fator): confere e-mail + senha e diz qual é o próximo passo.
-async function verifyPassword(email, password) {  //primeiro fator, que é a verificação por senha
+async function verifyPassword(email, password) {
   const user = userRepository.findByEmail(email.trim().toLowerCase());
 
-  // Mesma resposta para "e-mail não existe" e "senha errada":
-  // o atacante não descobre quais e-mails estão cadastrados.
-  // O bcrypt roda nos dois casos, senão a resposta mais rápida entregaria que o e-mail não existe.
   const passwordMatches = await comparePassword(password, user ? user.password_hash : DUMMY_HASH);
   if (!user || !passwordMatches) {
     throw new AppError(401, 'INVALID_CREDENTIALS', 'E-mail ou senha inválidos.');
@@ -72,13 +57,10 @@ async function verifyPassword(email, password) {  //primeiro fator, que é a ver
 
   assertNotLocked(user);
 
-  // Conta nova (ou 2FA resetado pelo admin) → configuração do 2FA é obrigatória
   const next = user.totp_enabled ? 'VERIFY_2FA' : 'SETUP_2FA';
   return { user, next };
 }
 
-// Grava na sessão que o primeiro fator foi aprovado.
-// regenerate() troca o ID da sessão: evita "session fixation" (atacante que plantou um ID antes do login).
 function startPendingSession(req, userId) {
   return new Promise((resolve, reject) => {
     req.session.regenerate((err) => {
@@ -90,12 +72,9 @@ function startPendingSession(req, userId) {
   });
 }
 
-// Etapa 2a (primeiro acesso): gera o segredo e o QR Code.
-// O segredo fica só na SESSÃO até o usuário provar, com um código válido, que configurou o app.
-async function startTotpSetup(req) {   //segundo fator, o QR code
+async function startTotpSetup(req) {
   const user = findPendingUser(req);
 
-  // Sem isso, quem soubesse só a senha poderia cadastrar o próprio celular e "roubar" o 2FA da conta
   if (user.totp_enabled) {
     throw new AppError(409, 'TOTP_ALREADY_ENABLED', '2FA já está configurado. Informe o código do autenticador.');
   }
@@ -106,8 +85,7 @@ async function startTotpSetup(req) {   //segundo fator, o QR code
   return { qrCode, manualKey: secret, otpauthUrl };
 }
 
-// Etapa 2a (confirmação): primeiro código válido → salva o segredo na conta e autentica.
-async function confirmTotpSetup(req, code) {  //ativação a 2FA
+async function confirmTotpSetup(req, code) {
   const secret = req.session.tempTotpSecret;
   if (!secret) {
     throw new AppError(400, 'TOTP_SETUP_NOT_STARTED', 'Gere o QR Code em /auth/2fa/setup antes de confirmar.');
@@ -119,14 +97,13 @@ async function confirmTotpSetup(req, code) {  //ativação a 2FA
   const timeStep = await totpService.verifyCode(secret, code);
   if (timeStep === null) registerInvalidCode(user);
 
-  userRepository.enableTotp(user.id, encrypt(secret), timeStep); // o banco só guarda o segredo cifrado
+  userRepository.enableTotp(user.id, encrypt(secret), timeStep);
   userRepository.clearFailedAttempts(user.id);
   await completeAuthentication(req, user.id);
 
   return userRepository.findById(user.id);
 }
 
-// Etapa 2b (acessos seguintes): confere o código atual do app com o segredo salvo na conta.
 async function verifyTotpLogin(req, code) {
   const user = findPendingUser(req);
 
@@ -136,18 +113,16 @@ async function verifyTotpLogin(req, code) {
 
   assertNotLocked(user);
 
-  const secret = decrypt(user.totp_secret_enc); // decifra só em memória, só para validar
+  const secret = decrypt(user.totp_secret_enc);
   const timeStep = await totpService.verifyCode(secret, code, user.last_totp_step);
   if (timeStep === null) registerInvalidCode(user);
 
-  userRepository.updateLastTotpStep(user.id, timeStep); // este código não poderá ser usado de novo
+  userRepository.updateLastTotpStep(user.id, timeStep);
   userRepository.clearFailedAttempts(user.id);
   await completeAuthentication(req, user.id);
   return user;
 }
 
-// Os dois fatores foram aprovados: a sessão passa para AUTHENTICATED.
-// mfaVerifiedAt marca quando o código foi validado (usado para exigir o 2FA de novo depois de um tempo).
 function completeAuthentication(req, userId) {
   return new Promise((resolve, reject) => {
     req.session.regenerate((err) => {
@@ -160,7 +135,6 @@ function completeAuthentication(req, userId) {
   });
 }
 
-// Logout: apaga a sessão no servidor, então o cookie antigo deixa de valer.
 function destroySession(req) {
   return new Promise((resolve, reject) => {
     req.session.destroy((err) => (err ? reject(err) : resolve()));

@@ -6,3 +6,5 @@ data/
 cookies*.txt
 .vscode/
 .DS_Store
+
+CREDENCIAIS.md

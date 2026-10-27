@@ -1,14 +1,9 @@
-// Helpers compartilhados pelas páginas.
-// O cookie de sessão (httpOnly) é enviado automaticamente pelo navegador em cada fetch:
-// o JavaScript não lê nem guarda nenhum token.
-
 const LOGIN_REASONS = {
   MFA_EXPIRED: 'Sua verificação em duas etapas expirou. Faça login novamente.',
   UNAUTHENTICATED: 'Faça login para continuar.',
   MFA_REQUIRED: 'Faça login e informe o código do autenticador.',
 };
 
-// Chama a API e lança um erro com status/code/message quando a resposta não é 2xx
 async function api(method, path, body) {
   const response = await fetch(path, {
     method,
@@ -28,7 +23,6 @@ async function api(method, path, body) {
   return data;
 }
 
-// Para páginas logadas: 401 (sessão expirada, sem 2FA...) manda de volta para o login
 async function protectedApi(method, path, body) {
   try {
     return await api(method, path, body);
@@ -46,7 +40,6 @@ function goToHome(role) {
   window.location.href = role === 'admin' ? '/admin.html' : '/inventory.html';
 }
 
-// Garante que há sessão autenticada com o papel esperado; senão redireciona
 async function requireSession(expectedRole) {
   try {
     const session = await api('GET', '/auth/me');
@@ -61,7 +54,6 @@ async function requireSession(expectedRole) {
   }
 }
 
-// Preenche o cabeçalho com o usuário, o horário de expiração do 2FA e o botão de sair
 function setupHeader(session) {
   document.getElementById('user-name').textContent = session.user.name;
   const expiresAt = new Date(session.mfa_expires_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -77,7 +69,6 @@ function showMessage(element, text, type = 'error') {
   element.textContent = text;
 }
 
-// Cria um elemento HTML. Usa textContent (nunca innerHTML) para não executar HTML vindo dos dados (XSS).
 function el(tag, attributes = {}, ...children) {
   const element = document.createElement(tag);
   for (const [key, value] of Object.entries(attributes)) {

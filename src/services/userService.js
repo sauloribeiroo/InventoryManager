@@ -1,11 +1,7 @@
-// Regras de negócio de usuários (gerenciadas pelo admin).
-
 const AppError = require('../utils/AppError');
 const { hashPassword } = require('../utils/password');
 const userRepository = require('../repositories/userRepository');
 
-// Monta a versão "pública" do usuário: password_hash, segredo TOTP e controles internos
-// NUNCA saem da API.
 function toPublicUser(user) {
   return {
     id: user.id,
@@ -31,7 +27,6 @@ function assertEmailAvailable(email, ignoreId = null) {
   }
 }
 
-// O admin não pode se trancar fora do sistema (desativar, rebaixar ou excluir a própria conta)
 function assertNotSelf(targetId, currentUserId, action) {
   if (targetId === currentUserId) {
     throw new AppError(400, 'SELF_ACTION_NOT_ALLOWED', `Você não pode ${action} a sua própria conta.`);
@@ -46,7 +41,6 @@ function getById(id) {
   return toPublicUser(findOrFail(id));
 }
 
-// Conta nova sempre nasce SEM 2FA: no primeiro login a pessoa é obrigada a configurar o próprio app.
 async function create({ name, email, password, role }) {
   const normalizedEmail = email.trim().toLowerCase();
   assertEmailAvailable(normalizedEmail);
@@ -63,7 +57,6 @@ async function create({ name, email, password, role }) {
 async function update(id, data, currentUserId) {
   findOrFail(id);
 
-  // Lista fixa de campos editáveis: qualquer outra chave enviada no corpo é ignorada
   const fields = {};
   if (data.name !== undefined) fields.name = data.name.trim();
   if (data.email !== undefined) {
@@ -87,14 +80,12 @@ function remove(id, currentUserId) {
   findOrFail(id);
   assertNotSelf(id, currentUserId, 'excluir');
 
-  // Empréstimos guardam quem registrou a saída: apagar o técnico quebraria o histórico
   if (userRepository.hasLoans(id)) {
     throw new AppError(409, 'CONFLICT', 'Usuário possui empréstimos registrados. Desative a conta em vez de excluir.');
   }
   userRepository.remove(id);
 }
 
-// Técnico perdeu/trocou o celular: o admin apaga o segredo e o próximo login pede um novo QR Code.
 function resetTotp(id) {
   findOrFail(id);
   userRepository.resetTotp(id);

@@ -1,5 +1,3 @@
-// Tela do técnico: estoque (com valor em R$ via AwesomeAPI) e empréstimos (prazo com feriados via BrasilAPI).
-
 const STATUS_LABELS = {
   available: ['Disponível', 'ok'],
   loaned: ['Emprestado', 'warn'],
@@ -37,7 +35,6 @@ async function loadEquipment() {
     })
   );
 
-  // Só equipamentos disponíveis podem ser emprestados
   const available = items.filter((item) => item.status === 'available');
   document.getElementById('equipment-id').replaceChildren(
     ...available.map((item) => el('option', { value: item.id }, `${item.asset_tag} — ${item.brand} ${item.model}`))
@@ -86,7 +83,7 @@ async function returnLoan(loan) {
 document.getElementById('loan-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const botao = event.target.querySelector('button[type="submit"]');
-  botao.disabled = true; // evita o clique duplo enquanto o pedido está em andamento
+  botao.disabled = true;
   try {
     const loan = await protectedApi('POST', '/api/loans', {
       equipment_id: Number(document.getElementById('equipment-id').value),
@@ -108,7 +105,7 @@ document.getElementById('loan-form').addEventListener('submit', async (event) =>
   } catch (error) {
     showMessage(loanMessage, error.message);
   } finally {
-    botao.disabled = false; // libera o botão com sucesso ou com erro
+    botao.disabled = false;
   }
 });
 

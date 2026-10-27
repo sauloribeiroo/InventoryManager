@@ -1,5 +1,3 @@
-// Rotas de usuários: /api/users/* — todas exigem sessão autenticada (senha + 2FA) E papel admin.
-
 const { Router } = require('express');
 const userController = require('../controllers/userController');
 const { requireAuth } = require('../middlewares/authMiddleware');
@@ -17,7 +15,7 @@ const {
 
 const router = Router();
 
-router.use(requireAuth, requireRole('admin')); // vale para todas as rotas abaixo
+router.use(requireAuth, requireRole('admin'));
 
 router.get('/', userController.list);
 router.get('/:id', userController.getById);

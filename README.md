@@ -4,7 +4,7 @@ API REST para controlar o empréstimo de equipamentos de alto valor (notebooks, 
 
 > Projeto da AV2 de **Técnicas de Integração de Sistemas**: Autenticação em Sistemas Integrados.
 
-- **Versão no ar:** <!-- TODO: colar o link do Render após o deploy --> `https://<app>.onrender.com`
+- **Versão no ar:** `https://<app>.onrender.com` (link do Render, preenchido após o deploy)
 - **Plano do projeto:** [docs/PLAN.md](docs/PLAN.md)
 
 ---
@@ -164,6 +164,7 @@ sequenceDiagram
 - Sessões e contadores do rate limit ficam **na memória do servidor**: reiniciar o servidor desloga todo mundo, e não funciona com várias instâncias. Em produção real, usaríamos um store compartilhado (ex.: Redis).
 - O **reset do 2FA** não derruba uma sessão que o usuário já tenha aberta (ela vale até expirar pelo `MFA_TTL_MINUTES`). Para cortar o acesso na hora, o admin deve **desativar** a conta: isso é checado a cada requisição.
 - Não há **códigos de recuperação** nem troca de senha pelo próprio usuário.
+- O repositório **não tem testes automatizados**: os testes foram feitos manualmente e com scripts de apoio.
 
 ### Implementação
 | Tecnologia | Uso |
@@ -236,6 +237,7 @@ router.use(requireAuth, requireRole('admin')); // senha + 2FA válidos E papel a
 | Vazamento do banco expõe senhas | Senhas com **bcrypt** (hash com salt, lento de propósito) |
 | Vazamento do banco expõe segredos TOTP | Segredo cifrado com **AES-256-GCM**, chave em `TOTP_ENCRYPTION_KEY` (fora do banco) |
 | Força bruta na senha | **Rate limiting** em `/auth/login` |
+| Descobrir quais e-mails existem medindo o tempo do login | O bcrypt roda **também quando o e-mail não existe** (comparação com um hash falso), então os dois casos levam o mesmo tempo |
 | Força bruta no código (1 milhão de combinações) | **Rate limiting** em `/auth/2fa/*` + **bloqueio da conta** por 15 min após 5 códigos errados (`423 Locked`) |
 | Alguém vê o código na tela e reutiliza | **Anti-replay:** o passo de tempo usado fica salvo em `last_totp_step`, e um código já aceito é recusado |
 | Sessão roubada vale para sempre | **Expiração do 2FA** (`MFA_TTL_MINUTES`) + logout destrói a sessão no servidor |
@@ -247,7 +249,10 @@ router.use(requireAuth, requireRole('admin')); // senha + 2FA válidos E papel a
 | Session fixation (atacante planta um ID de sessão antes do login) | `session.regenerate()` troca o ID ao passar da senha e ao passar do 2FA |
 | Quem sabe só a senha tenta cadastrar o próprio celular | `/auth/2fa/setup` recusa contas que já têm 2FA (`409`) |
 | XSS no front | CSP do `helmet` (só scripts do próprio site) e dados renderizados com `textContent` |
-| Corpo da requisição gigante ou malformado | `express.json` com limite de 10 kb + validação de cada campo (`400`) |
+| Corpo da requisição gigante ou malformado | `express.json` com limite de 10 kb (`413` se passar) + validação de cada campo (`400`) |
+| Subir em produção com chaves de exemplo | Com `NODE_ENV=production`, o servidor **não inicia** se `SESSION_SECRET` for curto ou de exemplo, ou se `TOTP_ENCRYPTION_KEY` for só zeros |
+| Senhas fixas conhecidas no ambiente publicado | Em produção, o seed exige `SEED_ADMIN_PASSWORD` e `SEED_TECH_PASSWORD` (as senhas não ficam no código) |
+| Dois técnicos emprestando o mesmo equipamento ao mesmo tempo | A reserva é um `UPDATE ... WHERE status = 'available'` atômico: só um pedido consegue, o outro recebe `409` |
 
 ---
 
@@ -283,13 +288,15 @@ Acesse **http://localhost:3000**.
 | Variável | Obrigatória | Exemplo | Descrição |
 |---|:---:|---|---|
 | `PORT` | não | `3000` | Porta HTTP |
-| `NODE_ENV` | não | `development` | Em `production`, o cookie fica `secure` (só HTTPS) |
-| `SESSION_SECRET` | **sim** | string aleatória longa | Assina o cookie de sessão |
+| `NODE_ENV` | não | `development` | Em `production`, o cookie fica `secure` (só HTTPS) e o servidor recusa as chaves de exemplo |
+| `SESSION_SECRET` | **sim** | string aleatória, 32+ caracteres | Assina o cookie de sessão |
 | `TOTP_ENCRYPTION_KEY` | **sim** | 64 caracteres hex (32 bytes) | Chave AES-256 usada para cifrar os segredos TOTP |
 | `MFA_TTL_MINUTES` | não | `30` | Minutos até exigir o 2FA de novo (use `1` para demonstrar) |
 | `DATABASE_PATH` | não | `./data/inventory.db` | Caminho do arquivo SQLite |
 | `SEED_ADMIN_PASSWORD` / `SEED_TECH_PASSWORD` | **em produção** | senha forte | Senhas dos usuários criados pelo `npm run seed` (em desenvolvimento, sem elas valem as padrão abaixo) |
 | `TZ` | recomendada | `America/Sao_Paulo` | Fuso das datas de empréstimo (sem ela, o Render usa UTC) |
+
+No Render, defina também `NODE_VERSION=22` (o projeto exige Node 22.13+).
 
 Para gerar valores seguros:
 ```bash
@@ -542,6 +549,8 @@ Exemplo de empréstimo registrado em 19/10/2026 com prazo de 10 dias úteis: o 1
 - cotação: usa a última conhecida com `"stale": true` (ou `value_brl: null` se nunca houve uma);
 - feriados: o prazo é contado só pulando fins de semana e a resposta traz `"holidays_checked": false`.
 
+Depois de uma falha, a API não tenta de novo por 30 s, para não atrasar cada requisição enquanto a API externa está fora do ar.
+
 Arquivos: [exchangeRateService.js](src/services/exchangeRateService.js), [holidayService.js](src/services/holidayService.js), e a combinação em [equipmentService.js](src/services/equipmentService.js) e [loanService.js](src/services/loanService.js).
 
 ---
@@ -550,23 +559,38 @@ Arquivos: [exchangeRateService.js](src/services/exchangeRateService.js), [holida
 
 O projeto roda no **Render** (plano gratuito).
 
-<!-- TODO: link definitivo -->
 **Versão no ar:** `https://<app>.onrender.com`
 
 ### Como fazer o deploy
-1. Crie uma conta em [render.com](https://render.com) e conecte o GitHub.
-2. **New → Web Service** → escolha o repositório `InventoryManager`.
+1. Crie uma conta em [render.com](https://render.com).
+2. **New → Web Service**. Escolha uma das duas formas de ligar o código:
+   - **Public Git Repository:** cole a URL do repositório (`https://github.com/sauloribeiroo/InventoryManager`). O repositório é público, então não precisa de permissão. Para publicar uma mudança, use **Manual Deploy**.
+   - **Conectar o GitHub:** exige que o dono do repositório autorize o Render. Neste caso, cada push na `main` faz um novo deploy automaticamente.
 3. Configure:
    - **Runtime:** Node
+   - **Branch:** `main`
    - **Build Command:** `npm install`
    - **Start Command:** `npm run seed && npm start`
-4. Em **Environment**, adicione `NODE_ENV=production`, `SESSION_SECRET`, `TOTP_ENCRYPTION_KEY`, `MFA_TTL_MINUTES` e `TZ=America/Sao_Paulo` (veja a [tabela](#variáveis-de-ambiente)).
-5. **Create Web Service.** Cada push na `main` faz um novo deploy automaticamente.
+4. Em **Environment**, adicione as variáveis abaixo (gere os valores com o comando da [seção 3](#variáveis-de-ambiente)):
+
+| Variável | Valor |
+|---|---|
+| `NODE_ENV` | `production` |
+| `NODE_VERSION` | `22` |
+| `SESSION_SECRET` | string aleatória de 32+ caracteres |
+| `TOTP_ENCRYPTION_KEY` | 64 caracteres hex |
+| `SEED_ADMIN_PASSWORD` | senha do administrador |
+| `SEED_TECH_PASSWORD` | senha dos técnicos |
+| `MFA_TTL_MINUTES` | `30` |
+| `TZ` | `America/Sao_Paulo` |
+
+5. **Create Web Service** e aguarde o build. Quando o log mostrar `InventoryManager rodando`, o site está no ar.
+6. Teste `GET /health` e faça um login completo.
 
 > No plano gratuito o disco é efêmero: o banco SQLite é recriado pelo seed a cada deploy ou reinício. Os 2FA configurados se perdem nesse momento, o que é aceitável para a demonstração. O serviço também "dorme" após inatividade, então a primeira requisição pode levar cerca de 50 s.
 
 ### Como testar online
-1. Abra o link acima e entre com um usuário do [seed](#usuários-de-exemplo-seed).
+1. Abra o link acima e entre com um usuário do [seed](#usuários-de-exemplo-seed). No ambiente publicado, as senhas são as definidas em `SEED_ADMIN_PASSWORD` e `SEED_TECH_PASSWORD`, informadas na entrega do trabalho.
 2. Configure o 2FA com o celular e explore a tela correspondente ao papel.
 3. Ou use os exemplos de `curl` da seção 5 trocando `http://localhost:3000` pelo link do Render.
 
@@ -614,10 +638,7 @@ InventoryManager/
 
 ## 9. Equipe
 
-<!-- TODO: preencher -->
 | Integrante | Matrícula | Principais contribuições |
 |---|---|---|
-| Saulo Ribeiro | | |
-| | | |
-| | | |
-| | | |
+| Saulo Ribeiro |2512851 | Estrutura do projeto e modelos; fluxo de autenticação (login, TOTP, QR Code, anti-replay, bloqueio de conta, rate limiting); gerenciamento de usuários; estoque e empréstimos; integração com AwesomeAPI e BrasilAPI; telas do front-end; README e diagramas |
+| Leonardo Monteiro |2426033 | Revisão do código e correção de falhas: empréstimo duplicado em pedidos simultâneos, resiliência às APIs externas fora do ar, erros 500 (corpo vazio, corpo grande, conta apagada no meio do login), tempo de resposta do login, validação das chaves em produção e senhas do seed; deploy e atualização do README |

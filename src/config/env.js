@@ -1,6 +1,3 @@
-// Lê as variáveis de ambiente em um único lugar e falha cedo se faltar algo obrigatório.
-// O .env é carregado pelo próprio Node (flag --env-file-if-exists nos scripts do package.json).
-
 const required = ['SESSION_SECRET', 'TOTP_ENCRYPTION_KEY'];
 
 for (const name of required) {
@@ -13,7 +10,6 @@ if (!/^[0-9a-fA-F]{64}$/.test(process.env.TOTP_ENCRYPTION_KEY)) {
   throw new Error('TOTP_ENCRYPTION_KEY deve ter 64 caracteres hexadecimais (32 bytes)');
 }
 
-// Em produção, os valores de exemplo do .env.example não podem ser usados
 if (process.env.NODE_ENV === 'production') {
   if (process.env.SESSION_SECRET.length < 32 || process.env.SESSION_SECRET === 'troque-por-uma-string-aleatoria-longa') {
     throw new Error('SESSION_SECRET inseguro para produção: use uma string aleatória com 32+ caracteres');

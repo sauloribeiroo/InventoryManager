@@ -1,5 +1,3 @@
-// Tabela de equipamentos do estoque de TI.
-
 const TYPES = ['notebook', 'desktop', 'monitor', 'tablet', 'projector'];
 const STATUSES = ['available', 'loaned', 'maintenance'];
 
