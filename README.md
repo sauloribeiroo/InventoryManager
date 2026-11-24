@@ -2,10 +2,11 @@
 
 API REST para controlar o empréstimo de equipamentos de alto valor (notebooks, desktops, monitores…) de um departamento de TI. O acesso é exclusivo para **técnicos** e **administradores** e protegido por **autenticação em dois fatores com TOTP**: senha + código de 6 dígitos gerado por um app autenticador (Google Authenticator, Microsoft Authenticator, Authy…).
 
-> Projeto da AV2 de **Técnicas de Integração de Sistemas**: Autenticação em Sistemas Integrados.
+> Projeto de **Técnicas de Integração de Sistemas**. Nasceu na AV2 (Autenticação em Sistemas Integrados) e está sendo estendido no **Projeto Final AV3**: um segundo sistema próprio, a **WarrantyAPI**, passa a decidir se um equipamento pode sair do setor de TI. Veja a [seção 9](#9-nova-versão-av3-warrantyapi).
 
 - **Versão no ar:** https://inventorymanager-pjpd.onrender.com
 - **Plano do projeto:** [docs/PLAN.md](docs/PLAN.md)
+- **Nova versão (AV3):** [seção 9](#9-nova-versão-av3-warrantyapi), em desenvolvimento
 
 ---
 
@@ -18,7 +19,8 @@ API REST para controlar o empréstimo de equipamentos de alto valor (notebooks, 
 6. [Integração com APIs externas](#6-integração-com-apis-externas)
 7. [Deploy](#7-deploy)
 8. [Estrutura do projeto](#8-estrutura-do-projeto)
-9. [Equipe](#9-equipe)
+9. [Nova versão (AV3): WarrantyAPI](#9-nova-versão-av3-warrantyapi)
+10. [Equipe](#10-equipe)
 
 ---
 
@@ -638,7 +640,161 @@ InventoryManager/
 
 ---
 
-## 9. Equipe
+## 9. Nova versão (AV3): WarrantyAPI
+
+> **Status: em desenvolvimento.** As seções 1 a 8 descrevem o sistema que já está no ar. Esta seção descreve o que será entregue no Projeto Final AV3, de 30/11 a 03/12.
+>
+> Documento de apresentação do escopo: [docs/InventoryManager_AV3_Nova_Versao.pdf](docs/InventoryManager_AV3_Nova_Versao.pdf)
+
+### Por que uma nova versão
+O Projeto Final AV3 exige **no mínimo dois sistemas próprios integrados**, e hoje existe um só. A nova versão resolve essa lacuna sem descartar nada do que já funciona:
+
+| Requisito | Mínimo | Hoje | Situação |
+|---|:---:|:---:|---|
+| Sistemas próprios integrados | 2 | 1 | Falta 1: a **WarrantyAPI** |
+| Integração com sistema externo | 1 | 2 | Já atende (BrasilAPI e AwesomeAPI) |
+
+### O que é a garantia
+Todo equipamento comprado vem com uma garantia do fabricante ou fornecedor (por exemplo, Dell ou Lenovo), válida até uma data. Nesse período, o fornecedor conserta ou troca o equipamento sem custo. Um equipamento caro emprestado **sem garantia** é um risco: se quebrar fora do setor de TI, o prejuízo é da empresa.
+
+**Nova regra de negócio:** equipamento com garantia vencida **não pode ser emprestado**.
+
+As APIs reais de garantia (Dell TechDirect, Lenovo, HP, Apple GSX) exigem cadastro como parceiro aprovado e números de série reais. Por isso a equipe vai criar a **WarrantyAPI**, um serviço próprio que simula o sistema de garantia do fornecedor. Ela é o segundo sistema próprio da solução.
+
+### A WarrantyAPI
+- Serviço **Node.js + Express** separado do InventoryManager, com **deploy próprio no Render**.
+- Dados em um arquivo JSON, com um registro por número de série: os 5 equipamentos do seed, sendo pelo menos 1 com garantia vencida para a demonstração.
+- Erros no mesmo formato do InventoryManager: `{ "error": { "code", "message" } }`.
+
+Exemplo de registro:
+```json
+{
+  "serial_number": "DL7440-8F2K1",
+  "supplier": "Dell Brasil",
+  "purchase_date": "2024-03-10",
+  "warranty_end": "2027-03-10",
+  "support_level": "ProSupport Next Business Day",
+  "status": "active"
+}
+```
+
+| Método | Rota | Retorna |
+|---|---|---|
+| GET | `/warranties/:serialNumber` | A garantia de um equipamento (`404` se não existir) |
+| GET | `/warranties?serials=A,B,C` | Várias garantias de uma vez, para a listagem do estoque |
+| GET | `/health` | Verifica se o serviço está no ar |
+
+### Segurança entre os serviços
+| Camada | Proteção |
+|---|---|
+| Chave | A WarrantyAPI só responde a quem envia o header `X-Service-Key` com a chave correta (variável `WARRANTY_API_KEY` nos dois serviços), comparada em tempo constante. Sem chave ou com chave errada: `401` |
+| Transporte | Tráfego só por HTTPS |
+| Borda | Rate limit e `helmet` também na WarrantyAPI |
+| Consumo | O InventoryManager valida o formato da resposta antes de usá-la |
+
+**Por que não usar o 2FA entre os serviços:** o TOTP prova que existe um humano com um celular. Entre máquinas não há humano, então a chave de serviço é o mecanismo adequado.
+
+**Padrão de comunicação:** REST + JSON síncrono, o mesmo usado com as APIs externas. O empréstimo precisa da resposta na hora para decidir se libera ou não.
+
+### Arquitetura final
+
+```mermaid
+flowchart LR
+    B[Navegador<br/>técnico ou admin] -- "HTTPS + sessão 2FA" --> IM
+
+    subgraph Proprios[Sistemas próprios]
+        IM[InventoryManager<br/>já existe]
+        WA[WarrantyAPI<br/>nova]
+    end
+
+    subgraph Externos[APIs externas]
+        BR[BrasilAPI<br/>feriados]
+        AW[AwesomeAPI<br/>cotação USD→BRL]
+    end
+
+    IM -- "REST + JSON<br/>X-Service-Key" --> WA
+    IM -- "REST + JSON<br/>timeout + cache" --> BR
+    IM -- "REST + JSON<br/>timeout + cache" --> AW
+```
+
+O usuário continua usando só o InventoryManager. **Quem chama a WarrantyAPI é o servidor do InventoryManager, nunca o navegador.**
+
+### Fluxos de integração
+
+**Fluxo 1: listar o estoque** (`GET /api/equipment`)
+```
+Navegador → InventoryManager → WarrantyAPI  (garantias em lote, com a chave)
+                             → AwesomeAPI   (cotação)
+          ← lista com o valor em R$ e a situação da garantia:
+            "ativa até dd/mm/aaaa" | "vencida" | "indisponível"
+```
+
+**Fluxo 2: registrar um empréstimo** (`POST /api/loans`), o fluxo principal
+
+```mermaid
+flowchart TD
+    A[1. Técnico envia POST /api/loans] --> B[2. Confere sessão, 2FA e papel]
+    B --> C{3. Consulta a WarrantyAPI<br/>com X-Service-Key}
+    C -- vencida --> E[409 WARRANTY_EXPIRED]
+    C -- sem resposta em 5 s --> F[503 não dá para verificar]
+    C -- ativa --> D[4. BrasilAPI: data de devolução<br/>pulando fins de semana e feriados]
+    D --> G[5. Reserva atômica do equipamento]
+    G --> H[201 Empréstimo registrado]
+```
+
+Os passos 1, 2, 4 e 5 já existem. O passo 3 é o único novo: **a WarrantyAPI decide se o empréstimo segue**. A garantia é consultada **antes** da reserva, então um pedido recusado não deixa o equipamento preso como emprestado.
+
+Resposta quando a garantia está vencida:
+```json
+{
+  "error": {
+    "code": "WARRANTY_EXPIRED",
+    "message": "Equipamento sem garantia não pode sair do setor."
+  }
+}
+```
+
+### Mudanças previstas no InventoryManager
+| Arquivo / rota | Mudança |
+|---|---|
+| `src/services/warrantyService.js` | **Novo.** Chama a WarrantyAPI com timeout de 5 s, cache e fallback, no mesmo molde do `exchangeRateService.js` |
+| `GET /api/equipment` | Junta a garantia de cada equipamento (consulta em lote) |
+| `POST /api/loans` | Consulta a garantia antes de reservar; vencida → `409`, sem resposta → `503` |
+| `public/inventory.html` | Nova coluna "Garantia": ativa até dd/mm/aaaa, vencida ou indisponível |
+| `.env.example` | Novas variáveis `WARRANTY_API_URL` e `WARRANTY_API_KEY` |
+| BrasilAPI e AwesomeAPI | Continuam como estão |
+
+### Requisitos da AV3 atendidos pela nova versão
+| Requisito | Como a nova versão atende |
+|---|---|
+| 2 sistemas próprios integrados | InventoryManager + WarrantyAPI, com deploy separado |
+| 1 sistema externo | BrasilAPI e AwesomeAPI (duas, acima do mínimo) |
+| Padrão de comunicação adequado | REST + JSON sobre HTTPS, síncrono |
+| Troca de dados consistente e segura | Chave de serviço, HTTPS, validação da resposta, timeout, cache e `503` quando não dá para verificar |
+| Autenticação e controle de acesso | Senha + 2FA TOTP, papéis `admin` e `technician`, sessão por estágios |
+| Deploy externo | Os dois serviços no Render |
+| Integração efetiva | A garantia muda o resultado do empréstimo: vencida, ele é recusado com `409` |
+
+### Decisões
+**Decidido: manter a AwesomeAPI.** O plano original ([docs/PLAN.md](docs/PLAN.md)) previa removê-la quando a WarrantyAPI entrasse. A equipe decidiu mantê-la porque:
+- já está implementada, testada e no ar;
+- removê-la exigiria mudar o model (`value_usd` → `value_brl`), o seed, o front, os testes e o README, sem ganho para nenhum requisito;
+- com duas integrações externas, se uma estiver fora do ar na demonstração, a outra ainda demonstra o requisito;
+- agora quem muda a regra de negócio é a WarrantyAPI, e o valor em reais ainda ajuda a dimensionar o risco de emprestar sem garantia.
+
+**A confirmar com o professor:**
+
+| Ponto | Proposta da equipe | Motivo | Alternativa |
+|---|---|---|---|
+| Onde fica o código da WarrantyAPI | Pasta `warranty-api/` neste repositório, com deploy separado no Render | Um só repositório para avaliar e um só histórico de commits | Repositório separado |
+| WarrantyAPI fora do ar | Recusar o empréstimo com `503` | Liberar sem verificar anularia a regra da garantia | Permitir com um aviso |
+
+### Possível evolução (opcional)
+Se houver tempo, um **webhook no sentido contrário**: a WarrantyAPI avisa o InventoryManager (`POST /integrations/warranty-events`, assinado com HMAC) sobre recall ou garantia vencida, e o equipamento passa para `maintenance`. Não faz parte do escopo mínimo da AV3.
+
+---
+
+## 10. Equipe
 
 | Integrante | Matrícula | Principais contribuições |
 |---|---|---|
